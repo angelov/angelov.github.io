@@ -3,6 +3,7 @@ layout: post
 title:  "EESTEC Motivational Weekend October 2012"
 date:   2012-10-07 12:44:43
 categories:
+author: Dejan Angelov
 ---
 
 When I joned [EESTEC (LC Skopje)](http://eestec-sk.org.mk/) about half year ago, almost all of the existing members were talking to me about some event called “Motivational weekend”. Few weeks after that, in May, we went on the first EESTEC motivational weekend for 2012 in Mountain house “Vrteska” on the mountain Plackovica. Today, I just got back from my second motivational weekend, held in the Mountain house “Smreka” on Popova Sapka from 05 to 07 October.

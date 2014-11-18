@@ -3,6 +3,7 @@ layout: post
 title:  "Introducing EESTEC Platform for Local Committees"
 date:   2014-08-05 21:46:43
 categories: 
+author: Dejan Angelov
 ---
 
 “EESTEC Platform” is a web application which will aim to ease the internal management of EESTEC’s local committees. The main idea for this to be achieved is to automate many of the tasks currently done “by hand” and to collect the big number of information (such as list of members and their info) currently spread across many spreadsheets, papers, mails etc. in one place.

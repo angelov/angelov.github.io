@@ -3,6 +3,7 @@ layout: post
 title:  "IMW: 10 years of EESTEC LC Skopje"
 date:   2013-07-30 21:46:43
 categories: 
+author: Dejan Angelov
 ---
 
 In the last few months my activities with EESTEC drastically decreased. I wanted to see the people again so I decided to join them in Ohrid on the first International Motivation Weekend organized by EESTEC LC Skopje from 18 to 21st of July. The event was also part of the bigger event called “EESTECers gone wild 2″. This IMW is important for the LC because it was mainly organized in order to celebrate the LC’s 10th birthday.
