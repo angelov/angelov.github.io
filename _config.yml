@@ -1,12 +1,11 @@
 # Site settings
-title: Nocturnal Thoughts
+title: Dejan Angelov
 author: Dejan Angelov
 email: angelovdejan92@gmail.com
 description: > # this means to ignore newlines until "baseurl:"
-  Student at Faculty of Computer Science and Engineering, Ss. Cyril and Methodius University 
-  in Skopje, Macedonia. Back-end developer mainly working with PHP, but experimenting with 
-  many other technologies. Member of EESTEC (Electrical Engineering StudenTs’ European 
-  assoCiation), LC Skopje.
+  Software engineer at GSIX. Student at Faculty of Computer Science and Engineering, Ss. Cyril
+  and Methodius University in Skopje, Macedonia. Mainly working with PHP, but experimenting with many other technologies.
+  Interested in software architecture, domain-driven design and electronics. People say i’m weird.
 baseurl: "" # the subpath of your site, e.g. /blog/
 url: "http://angelovdejan.me" # the base hostname & protocol for your site
 twitter_username: angelovdejan

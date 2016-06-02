@@ -6,7 +6,7 @@ permalink: /about/
 
 <img class="img-left" src="{{ site.url }}/images/100_4188-cropped.png" style="width: 150px">
 
-Software engineer at [GSIX](http://g6solutions.com). Student at Faculty of Computer Science and Engineering, Ss. Cyril
+Software engineer at [GSIX](http://gsix.me). Student at Faculty of Computer Science and Engineering, Ss. Cyril
 and Methodius University in Skopje, Macedonia. Mainly working with PHP, but experimenting with many other technologies.
 Interested in software architecture, domain-driven design and electronics. People say i’m weird.
 
