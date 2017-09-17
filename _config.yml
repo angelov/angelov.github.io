@@ -3,9 +3,7 @@ title: Dejan Angelov
 author: Dejan Angelov
 email: angelovdejan92@gmail.com
 description: > # this means to ignore newlines until "baseurl:"
-  Software engineer at GSIX. Student at Faculty of Computer Science and Engineering, Ss. Cyril
-  and Methodius University in Skopje, Macedonia. Mainly working with PHP, but experimenting with many other technologies.
-  Interested in software architecture, domain-driven design and electronics. People say i’m weird.
+  Software engineer at GSIX. BSc. in Computer Science. Passionate about building and delivering high quality software solutions using proven methodologies/practices (domain-driven design, test-driven development, behaviour-driven development, continuous integration/delivery, etc) and technologies (PHP, Symfony, RDBs, Redis, Neo4j, etc.)
 baseurl: "" # the subpath of your site, e.g. /blog/
 url: "http://angelovdejan.me" # the base hostname & protocol for your site
 twitter_username: angelovdejan
