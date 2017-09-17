@@ -3,6 +3,7 @@ layout: post
 title:  "Using the Go! Aspect-Oriented Framework to trim values before validation"
 date:   2017-09-17 12:15:00
 author: Dejan Angelov
+image:  aop.png
 categories:
 ---
 
