@@ -3,11 +3,14 @@ title: Dejan Angelov
 author: Dejan Angelov
 email: angelovdejan92@gmail.com
 description: > # this means to ignore newlines until "baseurl:"
-  Software engineer at GSIX. BSc. in Computer Science. Passionate about building and delivering high quality software solutions using proven methodologies/practices (domain-driven design, test-driven development, behaviour-driven development, continuous integration/delivery, etc) and technologies (PHP, Symfony, RDBs, Redis, Neo4j, etc.)
+  Software engineer. BSc. in Computer Science. Passionate about building and delivering high quality software solutions
+  using proven methodologies/practices (domain-driven design, test-driven development, behaviour-driven development,
+  continuous integration/delivery, etc) and technologies (PHP, Symfony, RDBs, Redis, Neo4j, etc.)
 baseurl: "" # the subpath of your site, e.g. /blog/
 url: "http://angelovdejan.me" # the base hostname & protocol for your site
 twitter_username: angelovdejan
 github_username:  angelov
+timezone: Europe/Skopje
 
 # Build settings
 markdown: kramdown
