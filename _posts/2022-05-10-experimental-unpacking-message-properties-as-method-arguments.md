@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Experimental: Unpacking message properties as handler arguments in Symfony Messenger" 
-date:   2022-05-07 14:29:00
+date:   2022-05-10 20:29:00
 author: Dejan Angelov
 image:  boxes-2.jpg
 categories:
