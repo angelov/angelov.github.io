@@ -12,7 +12,8 @@ Software engineer. BSc. in Computer Science. Passionate about building and deliv
 <small><em>
 	<a href="https://www.linkedin.com/in/angelovdejan">LinkedIn</a> /
 	<a href="https://github.com/angelov">GitHub</a> /
-	<a href="https://twitter.com/angelovdejan">Twitter</a>
+	<a href="https://twitter.com/angelovdejan">Twitter</a> /
+    <a href="https://phpc.social/@angelov">Fediverse</a>
 	<br />
 	angelovdejan92 [at] gmail [dot] com</em>
 </small>
