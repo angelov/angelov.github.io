@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width initial-scale=1">
+
+  <title>Decomposing the user checking mechanism in Symfony</title>
+  <meta name="description" content="The user checkers in the Symfony Security component allow us to control whether an user can be authenticated in our system, even if they have entered their c...">
+
+	
+  		<meta content="article" property="og:type">
+	
+	<meta property="og:title" content="Decomposing the user checking mechanism in Symfony" />
+	<meta property="og:description" content="The user checkers in the Symfony Security component allow us to control whether an user can be authenticated in our system, even if they have entered their c..." />
+	
+  		<meta content="http://angelovdejan.me/2018/08/02/decomposing-the-user-checking-mechanism-in-symfony.html" property="og:url">
+	
+	<meta property="og:site_name" content="Dejan Angelov" />
+	<meta property="og:image" content="http://angelovdejan.me/images/100_4188-cropped.jpg" />
+	<meta name="twitter:site" content="@angelovdejan" />
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://angelovdejan.me/2018/08/02/decomposing-the-user-checking-mechanism-in-symfony.html">
+  <link rel="alternate" type="application/atom+xml" title="Dejan Angelov" href="http://angelovdejan.me/feed.xml" />
+  <link rel="me" href="https://phpc.social/@angelov">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Dejan Angelov</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+          <a class="page-link" href="/">Blog</a>
+        
+          
+          <a class="page-link" href="/about/">About Me</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">Decomposing the user checking mechanism in Symfony</h1>
+    <p class="post-meta">Aug 2, 2018 • Dejan Angelov</p>
+  </header>
+
+  <article class="post-content">
+    <p>The user checkers in the Symfony Security component allow us to control whether an user can be authenticated in our system, 
+even if they have entered their correct credentials. In this article we’ll see how we can make the process more flexible by 
+splitting our checking logic from one to multiple checkers.</p>
+
+<p>As written in the documentation, we can set a custom user checker for each of the firewalls we have in our security configuration:</p>
+
+<figure class="highlight"><pre><code class="language-yaml" data-lang="yaml"><span class="na">security</span><span class="pi">:</span>
+    <span class="na">firewalls</span><span class="pi">:</span>
+        <span class="na">main</span><span class="pi">:</span>
+            <span class="na">pattern</span><span class="pi">:</span> <span class="s">^/</span>
+            <span class="na">user_checker</span><span class="pi">:</span> <span class="s">App\Security\UserChecker</span></code></pre></figure>
+
+<p>Let’s imagine that we are developing an application that has the following requirements for the users in order for them to be 
+allowed to login into the system:</p>
+
+<ul>
+  <li>The user has an approved account</li>
+  <li>The user is not banned</li>
+  <li>The user has a valid subscription</li>
+</ul>
+
+<h3 id="using-a-general-user-checker">Using a general User Checker</h3>
+
+<p>As the configuration allows us to configure only one service as user checker per firewall, it may seem convenient for us to put all 
+those checks in a single user checker class:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">UserChecker</span> <span class="kd">implements</span> <span class="nc">UserCheckerInterface</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="nv">$bansChecker</span><span class="p">;</span>
+    <span class="k">private</span> <span class="nv">$subscriptionValidator</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span>
+        <span class="kt">UserBansChecker</span> <span class="nv">$bansChecker</span><span class="p">,</span>
+        <span class="kt">SubscriptionValidator</span> <span class="nv">$subscriptionValidator</span>
+    <span class="p">)</span> <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">bansChecker</span> <span class="o">=</span> <span class="nv">$bansChecker</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">subscriptionValidator</span> <span class="o">=</span> <span class="nv">$subscriptionValidator</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">checkPreAuth</span><span class="p">(</span><span class="kt">UserInterface</span> <span class="nv">$user</span><span class="p">)</span> <span class="p">:</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="nv">$user</span><span class="o">-&gt;</span><span class="nf">isApproved</span><span class="p">())</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nc">UserNotApprovedAuthenticationException</span><span class="p">();</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">checkPostAuth</span><span class="p">(</span><span class="kt">UserInterface</span> <span class="nv">$user</span><span class="p">)</span> <span class="p">:</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="n">bansChecker</span><span class="o">-&gt;</span><span class="nf">isBanned</span><span class="p">(</span><span class="nv">$user</span><span class="p">))</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nc">UserBannedAuthenticationException</span><span class="p">();</span>
+        <span class="p">}</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="n">subscriptionValidator</span><span class="o">-&gt;</span><span class="nf">hasValidSubscription</span><span class="p">(</span><span class="nv">$user</span><span class="p">))</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nc">SubscriptionExpiredAuthenticationException</span><span class="p">(</span><span class="nv">$user</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>If we’re working with a bigger and more complex application, the logic of the checkers may be distributed along multiple 
+modules in the system. Although it’s simple, in the example above we can see that the rules for the checking 
+can come from different modules like “Subscriptions”, “Users”, “User Banning”, etc.</p>
+
+<p>Each of those modules may have its own business logic, and having this one user checker, we’re moving pieces of that logic 
+to a single place, perhaps in some “Authentication” module.</p>
+
+<p>We already know that business requirements always change, so we can certainly be sure that the business logic we’re working 
+with in our application will have to change as well.</p>
+
+<p>Let’s imagine that we’ve stopped to support our services in some countries, so we’ll have to disallow the users from those 
+countries to login into the application. In such case we’ll have to modify our existing class, clearly violating the
+<em>“Open–closed principle”</em>. Besides having to modify our checker class, we’ll also have to modify our tests for this class, 
+to mock more services there and possibly to make the existing cases more complicated. And the same applies for removing a check 
+too.</p>
+
+<p>For most of the rules included in the checker, we’ll have to inject some service. As we’ll be adding more and more rules,
+this list will grow too, making the checker depending on more and more services.</p>
+
+<h3 id="decomposing-the-checking-logic">Decomposing the checking logic</h3>
+
+<p>Instead of having all the checks combined in a single class, we can split them and define the following three checkers:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">UserApprovalStatusUserChecker</span> <span class="kd">implements</span> <span class="nc">UserCheckerInterface</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">checkPreAuth</span><span class="p">(</span><span class="kt">UserInterface</span> <span class="nv">$user</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="nv">$user</span><span class="o">-&gt;</span><span class="nf">isApproved</span><span class="p">())</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nc">UserNotApprovedAuthenticationException</span><span class="p">();</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">checkPostAuth</span><span class="p">(</span><span class="kt">UserInterface</span> <span class="nv">$user</span><span class="p">)</span>
+    <span class="p">{</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">BannedUsersUserChecker</span> <span class="kd">implements</span> <span class="nc">UserCheckerInterface</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="nv">$bansChecker</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">UserBansChecker</span> <span class="nv">$bansChecker</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">bansChecker</span> <span class="o">=</span> <span class="nv">$bansChecker</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">checkPreAuth</span><span class="p">(</span><span class="kt">UserInterface</span> <span class="nv">$user</span><span class="p">):</span> <span class="kt">void</span>
+    <span class="p">{</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">checkPostAuth</span><span class="p">(</span><span class="kt">UserInterface</span> <span class="nv">$user</span><span class="p">):</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="n">bansChecker</span><span class="o">-&gt;</span><span class="nf">isBanned</span><span class="p">(</span><span class="nv">$user</span><span class="p">))</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nc">UserBannedAuthenticationException</span><span class="p">();</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">SubscriptionUserChecker</span> <span class="kd">implements</span> <span class="nc">UserCheckerInterface</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="nv">$subscriptionValidator</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">SubscriptionValidator</span> <span class="nv">$subscriptionValidator</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">subscriptionValidator</span> <span class="o">=</span> <span class="nv">$subscriptionValidator</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">checkPreAuth</span><span class="p">(</span><span class="kt">UserInterface</span> <span class="nv">$user</span><span class="p">)</span>
+    <span class="p">{</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">checkPostAuth</span><span class="p">(</span><span class="kt">UserInterface</span> <span class="nv">$user</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="n">subscriptionValidator</span><span class="o">-&gt;</span><span class="nf">hasValidSubscription</span><span class="p">(</span><span class="nv">$user</span><span class="p">))</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nc">SubscriptionExpiredAuthenticationException</span><span class="p">(</span><span class="nv">$user</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Having them separated, we can organize the classes better by moving them to the proper modules they belong to.</p>
+
+<p>Each of the checkers can now be tested separately, leading to cleaner, simpler and more maintainable tests.</p>
+
+<p>Let’s go back to the case when we need to add an additional user checker. To achieve the same, now we only have to write the 
+new user checker class, without touching the existing ones. As the new class can be tested separately, the unit tests for the other 
+checkers can remain untouched as well.</p>
+
+<p>Removing an user checker now is just a matter of removing the checker class.</p>
+
+<p>As the checkers are now defined per module instead of a central place, we can easily extend the checking process by adding 
+new modules which will have their own checkers defined.</p>
+
+<h3 id="wiring-the-checkers-together">Wiring the checkers together</h3>
+
+<p>We remember that the configuration of the Symfony Security component allows us to define only one user checker per firewall. 
+As we now have more than one checker, we’ll create a composite user checker which will hold the other checkers and call them 
+when needed. We’ll register that checker as a service and configure it as checker for our firewall.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">CompositeUserChecker</span> <span class="kd">implements</span> <span class="nc">UserCheckerInterface</span>
+<span class="p">{</span>
+    <span class="cd">/** @var UserCheckerInterface[] */</span>
+    <span class="k">private</span> <span class="nv">$checkers</span> <span class="o">=</span> <span class="p">[];</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">addChecker</span><span class="p">(</span><span class="kt">UserCheckerInterface</span> <span class="nv">$userChecker</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">checkers</span><span class="p">[]</span> <span class="o">=</span> <span class="nv">$userChecker</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">checkPreAuth</span><span class="p">(</span><span class="kt">UserInterface</span> <span class="nv">$user</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">foreach</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="n">checkers</span> <span class="k">as</span> <span class="nv">$checker</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nv">$checker</span><span class="o">-&gt;</span><span class="nf">checkPreAuth</span><span class="p">(</span><span class="nv">$user</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">checkPostAuth</span><span class="p">(</span><span class="kt">UserInterface</span> <span class="nv">$user</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">foreach</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="n">checkers</span> <span class="k">as</span> <span class="nv">$checker</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nv">$checker</span><span class="o">-&gt;</span><span class="nf">checkPostAuth</span><span class="p">(</span><span class="nv">$user</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-yaml" data-lang="yaml"><span class="na">security</span><span class="pi">:</span>
+    <span class="na">firewalls</span><span class="pi">:</span>
+        <span class="na">main</span><span class="pi">:</span>
+            <span class="na">pattern</span><span class="pi">:</span> <span class="s">^/</span>
+            <span class="na">user_checker</span><span class="pi">:</span> <span class="s">Acme\Core\Security\CompositeUserChecker</span></code></pre></figure>
+
+<p>The next thing we need is the mechanism of adding our checkers to the composite one.</p>
+
+<p>We’ll register all the checkers as services and tag them with a <code class="language-plaintext highlighter-rouge">user_checker</code> tag.</p>
+
+<figure class="highlight"><pre><code class="language-yaml" data-lang="yaml"><span class="na">services</span><span class="pi">:</span>
+
+    <span class="na">Acme\Users\Authentication\UserApprovalStatusUserChecker</span><span class="pi">:</span>
+        <span class="na">tags</span><span class="pi">:</span> <span class="pi">[</span><span class="s1">'</span><span class="s">user_checker'</span><span class="pi">]</span>
+
+    <span class="na">Acme\Users\Banning\Authentication\BannedUsersUserChecker</span><span class="pi">:</span>
+        <span class="na">tags</span><span class="pi">:</span> <span class="pi">[</span><span class="s1">'</span><span class="s">user_checker'</span><span class="pi">]</span>
+
+    <span class="na">Acme\Subscriptions\Authentication\SubscriptionUserChecker</span><span class="pi">:</span>
+        <span class="na">tags</span><span class="pi">:</span> <span class="pi">[</span><span class="s1">'</span><span class="s">user_checker'</span><span class="pi">]</span></code></pre></figure>
+
+<p>Alternatively, since all of our checkers implement the <code class="language-plaintext highlighter-rouge">Symfony\Component\Security\Core\User\UserCheckerInterface</code> interface, instead of 
+manually adding the tags, we can register the interface for autoconfiguration in our Kernel.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">Kernel</span> <span class="kd">extends</span> <span class="nc">BaseKernel</span>
+<span class="p">{</span>
+    <span class="c1">// ...</span>
+
+    <span class="k">protected</span> <span class="k">function</span> <span class="n">build</span><span class="p">(</span><span class="kt">ContainerBuilder</span> <span class="nv">$container</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$container</span>
+            <span class="o">-&gt;</span><span class="nf">registerForAutoconfiguration</span><span class="p">(</span><span class="nc">UserCheckerInterface</span><span class="o">::</span><span class="n">class</span><span class="p">)</span>
+            <span class="o">-&gt;</span><span class="nf">addTag</span><span class="p">(</span><span class="s1">'user_checker'</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>We now have our checkers registered and configured. The final step is to add them to the composite checker. To do that, 
+we’ll have a compiler pass that will find the tagged checkers when compiling the container, and add them to the composite 
+checker:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">UserCheckersCompilerPass</span> <span class="kd">implements</span> <span class="nc">CompilerPassInterface</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">process</span><span class="p">(</span><span class="kt">ContainerBuilder</span> <span class="nv">$container</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$mainChecker</span> <span class="o">=</span> <span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">findDefinition</span><span class="p">(</span><span class="nc">CompositeUserChecker</span><span class="o">::</span><span class="n">class</span><span class="p">);</span>
+
+        <span class="nv">$userCheckers</span> <span class="o">=</span> <span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">findTaggedServiceIds</span><span class="p">(</span><span class="s1">'user_checker'</span><span class="p">);</span>
+
+        <span class="k">foreach</span> <span class="p">(</span><span class="nv">$userCheckers</span> <span class="k">as</span> <span class="nv">$checker</span> <span class="o">=&gt;</span> <span class="nv">$tags</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nv">$checker</span> <span class="o">===</span> <span class="nv">$mainChecker</span><span class="o">-&gt;</span><span class="nf">getClass</span><span class="p">())</span> <span class="p">{</span>
+                <span class="k">continue</span><span class="p">;</span>
+            <span class="p">}</span>
+
+            <span class="nv">$mainChecker</span><span class="o">-&gt;</span><span class="nf">addMethodCall</span><span class="p">(</span><span class="s1">'addChecker'</span><span class="p">,</span> <span class="p">[</span><span class="k">new</span> <span class="nc">Reference</span><span class="p">(</span><span class="nv">$checker</span><span class="p">)]);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<h3 id="further-ideas">Further ideas</h3>
+
+<p>In bigger and more complex applications, it is very likely that we’ll have multiple firewall with different authentication 
+requirements.</p>
+
+<p>As the checks for all the requirements are now represented as separate classes, we can easily combine any of them in multiple 
+instances of the composite checker and use them for the proper fiewalls.</p>
+
+<p>As a final note, I would like to note that even though we’ve made the checking process more flexible, we’re still coupling part 
+of our business logic to the Symfony Security component. Let’s have that topic for a possible future article :)</p>
+
+  </article>
+
+</div>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <p class="text"><small>
+        Unless otherwise stated, the content of this blog is licensed under a <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+        </small></p>
+
+      <p class="text" style="float: left;">
+        <small>Built with <a href="http://jekyllrb.com" target="_blank">Jekyll</a></small>
+      </p>
+
+      <p class="text" style="text-align: right;">
+        <small>Subscribe via <a href="/feed.xml">RSS</a></small>
+      </p>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

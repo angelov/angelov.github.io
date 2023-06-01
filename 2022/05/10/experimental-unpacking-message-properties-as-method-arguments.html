@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width initial-scale=1">
+
+  <title>Experimental: Unpacking message properties as handler arguments in Symfony Messenger</title>
+  <meta name="description" content="In my previous post, we saw that by using custom PHP attributes, we can have our Symfony Messenger message handlers placed in any service in our application....">
+
+	
+  		<meta content="article" property="og:type">
+	
+	<meta property="og:title" content="Experimental: Unpacking message properties as handler arguments in Symfony Messenger" />
+	<meta property="og:description" content="In my previous post, we saw that by using custom PHP attributes, we can have our Symfony Messenger message handlers placed in any service in our application...." />
+	
+  		<meta content="http://angelovdejan.me/2022/05/10/experimental-unpacking-message-properties-as-method-arguments.html" property="og:url">
+	
+	<meta property="og:site_name" content="Dejan Angelov" />
+	<meta property="og:image" content="http://angelovdejan.me/images/boxes-2.jpg" />
+	<meta name="twitter:site" content="@angelovdejan" />
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://angelovdejan.me/2022/05/10/experimental-unpacking-message-properties-as-method-arguments.html">
+  <link rel="alternate" type="application/atom+xml" title="Dejan Angelov" href="http://angelovdejan.me/feed.xml" />
+  <link rel="me" href="https://phpc.social/@angelov">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Dejan Angelov</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+          <a class="page-link" href="/">Blog</a>
+        
+          
+          <a class="page-link" href="/about/">About Me</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">Experimental: Unpacking message properties as handler arguments in Symfony Messenger</h1>
+    <p class="post-meta">May 10, 2022 • Dejan Angelov</p>
+  </header>
+
+  <article class="post-content">
+    <p>In my <a href="/2022/01/09/custom-php-attributes-for-symfony-messenger-handlers.html">previous post</a>, we saw that by using 
+custom PHP attributes, we can have our Symfony Messenger message handlers placed in any service in our application. The 
+only requirement for the message handlers is for them to be methods that are able to receive the message object as an 
+argument. In this post we will see how we can avoid that requirement, and register any method as a message handler, by 
+automatically passing any of the message’s properties as values for the handler’s arguments.</p>
+
+<div class="alert alert-danger">
+    <small>
+	    <strong>Warning:</strong> I got this idea while working on a hobby project that will never go to production. I 
+        haven't tried it in a real-world project and haven't really thought of the long-term consequences of it.
+        <br />
+        My advice is to use what you'll read here only as a basis for future experimentation, and not as a final 
+        solution.
+    </small>
+</div>
+
+<p>We can start by 
+<a href="https://symfony.com/doc/6.0/messenger/multiple_buses.html" target="_blank">declaring two message busses</a> in our 
+application, called <code class="language-plaintext highlighter-rouge">event_bus</code> and <code class="language-plaintext highlighter-rouge">command_bus</code>:</p>
+
+<figure class="highlight"><pre><code class="language-yaml" data-lang="yaml"><span class="na">framework</span><span class="pi">:</span>
+    <span class="na">messenger</span><span class="pi">:</span>
+        <span class="na">buses</span><span class="pi">:</span>
+            <span class="na">event_bus</span><span class="pi">:</span> <span class="s">...</span>
+            <span class="na">command_bus</span><span class="pi">:</span> <span class="s">...</span></code></pre></figure>
+
+<p>Imagine that we have a store where people can buy and sell books. Whenever somebody buys a book, we’ll be dispatching 
+the following domain event:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">BookWasPurchased</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="kt">string</span> <span class="nv">$title</span><span class="p">,</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="kt">string</span> <span class="nv">$customerName</span><span class="p">,</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="kt">DateTimeInterface</span> <span class="nv">$purchasedAt</span>
+    <span class="p">)</span> <span class="p">{</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>We have a <code class="language-plaintext highlighter-rouge">PurchaseHistory</code> service that keeps track who has bought which book, so we want its <code class="language-plaintext highlighter-rouge">recordPurchase</code>, which 
+requires the title of the book and the name of the customer, to be called whenever this event occurs.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">PurchaseHistory</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">recordPurchase</span><span class="p">(</span><span class="kt">string</span> <span class="nv">$bookTitle</span><span class="p">,</span> <span class="kt">string</span> <span class="nv">$customerName</span><span class="p">):</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="nf">dd</span><span class="p">(</span><span class="nb">sprintf</span><span class="p">(</span>
+            <span class="s2">"%s bought the </span><span class="se">\"</span><span class="s2">%s</span><span class="se">\"</span><span class="s2"> book."</span><span class="p">,</span>
+            <span class="nv">$customerName</span><span class="p">,</span>
+            <span class="nv">$bookTitle</span>
+        <span class="p">));</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>To achieve that, we need to register a listener that will be receiving and handling these events:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">RecordBookPurchase</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="kt">PurchaseHistory</span> <span class="nv">$purchaseHistory</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">PurchaseHistory</span> <span class="nv">$purchaseHistory</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">purchaseHistory</span> <span class="o">=</span> <span class="nv">$purchaseHistory</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="na">#[Listener(event: BookWasPurchased::class)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">handle</span><span class="p">(</span><span class="kt">BookWasPurchased</span> <span class="nv">$event</span><span class="p">):</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">purchaseHistory</span><span class="o">-&gt;</span><span class="nf">recordPurchase</span><span class="p">(</span>
+            <span class="nv">$event</span><span class="o">-&gt;</span><span class="n">title</span><span class="p">,</span>
+            <span class="nv">$event</span><span class="o">-&gt;</span><span class="n">customerName</span>
+        <span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>As we can see here, we’re not doing much in this listener besides getting the needed information from the event’s 
+properties and passing it to the service where the actual recording will happen.</p>
+
+<p>Let’s see how we can avoid having to create separate classes/methods for this type of listeners, and just register the 
+actual service’s method as a message handler (an event listener in our case) instead.</p>
+
+<p>As a first step, we’ll remove the <code class="language-plaintext highlighter-rouge">RecordBookPurchase</code> class and move the listener attribute declaration to the 
+<code class="language-plaintext highlighter-rouge">PurchaseHistory::recordPurchase</code> method:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">PurchaseHistory</span>
+<span class="p">{</span>
+    <span class="na">#[Listener(event: BookWasPurchased::class)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">recordPurchase</span><span class="p">(</span><span class="kt">string</span> <span class="nv">$bookTitle</span><span class="p">,</span> <span class="kt">string</span> <span class="nv">$customerName</span><span class="p">):</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="c1">// ...</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>And then dispatch an instance of the event:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nv">$eventBus</span><span class="o">-&gt;</span><span class="nf">dispatch</span><span class="p">(</span>
+    <span class="k">new</span> <span class="nc">BookWasPurchased</span><span class="p">(</span><span class="s1">'Example Book'</span><span class="p">,</span> <span class="s1">'John Smith'</span><span class="p">,</span> <span class="nv">$now</span><span class="p">)</span>
+<span class="p">);</span></code></pre></figure>
+
+<p>As expected, the handling of the event will fail because we broke the compatibility - the handler is expecting multiple
+string arguments, but it receives an <code class="language-plaintext highlighter-rouge">BookWasPurchased</code> instance instead.</p>
+
+<blockquote>
+  <p>Handling “BookWasPurchased” failed: PurchaseHistory::recordPurchase(): Argument #1 ($bookTitle) must be of type 
+string, BookWasPurchased given<br />
+<sup>TypeError &gt; HandlerFailedException</sup></p>
+</blockquote>
+
+<p>So, we need to find a way and build some mechanism that will transform the data before it arrives to the handler.</p>
+
+<h3 id="replacing-the-handlers-locator">Replacing the handlers locator</h3>
+
+<p>When a message is dispatched to a Symfony Messenger message bus, it goes through a 
+<a href="https://symfony.com/doc/6.0/messenger.html#middleware" target="_blank">list of middleware</a> before eventually being 
+handled by a handler. The last middleware in the list, <code class="language-plaintext highlighter-rouge">\Symfony\Component\Messenger\Middleware\HandleMessageMiddleware</code>, 
+is the one that calls the appropriate handler(s).</p>
+
+<p>This middleware uses a service that implements the <code class="language-plaintext highlighter-rouge">\Symfony\Component\Messenger\Handler\HandlersLocatorInterface</code> 
+interface to find all the registered handlers for the current dispatched message.</p>
+
+<p>If we take a look at that interface, its <code class="language-plaintext highlighter-rouge">getHandlers</code> method expects the message wrapped in an Envelope (that’s how 
+it’s already being received in middleware) and returns an iterable that consists of 
+<code class="language-plaintext highlighter-rouge">\Symfony\Component\Messenger\Handler\HandlerDescriptor</code> objects (we’ll call them handler descriptors). Each of these 
+handler descriptors wraps a found handler, as well as some additional metadata related to it.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">interface</span> <span class="nc">HandlersLocatorInterface</span>
+<span class="p">{</span>
+    <span class="cd">/**
+    * Returns the handlers for the given message name.
+    *
+    * @return iterable&lt;int, HandlerDescriptor&gt;
+    */</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getHandlers</span><span class="p">(</span><span class="kt">Envelope</span> <span class="nv">$envelope</span><span class="p">):</span> <span class="kt">iterable</span><span class="p">;</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Within the middleware, from each of the handler descriptors, the actual handler is being retrieved and called with the 
+message object as an argument.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="c1">// from the \Symfony\Component\Messenger\Middleware\HandleMessageMiddleware class</span>
+
+<span class="k">foreach</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="n">handlersLocator</span><span class="o">-&gt;</span><span class="nf">getHandlers</span><span class="p">(</span><span class="nv">$envelope</span><span class="p">)</span> <span class="k">as</span> <span class="nv">$handlerDescriptor</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// ...</span>
+
+    <span class="nv">$handler</span> <span class="o">=</span> <span class="nv">$handlerDescriptor</span><span class="o">-&gt;</span><span class="nf">getHandler</span><span class="p">();</span>
+
+    <span class="c1">// ...</span>
+    
+    <span class="nv">$result</span> <span class="o">=</span> <span class="nv">$handler</span><span class="p">(</span><span class="nv">$message</span><span class="p">);</span>
+                
+    <span class="c1">// ...</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>If we take a look at the handler descriptor for the handler we defined here, we can see that it has the handler as a 
+closure, with both the string arguments.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nc">Symfony\Component\Messenger\Handler\HandlerDescriptor</span> <span class="p">{</span><span class="c1">#618 ▼</span>
+    <span class="o">-</span><span class="n">handler</span><span class="o">:</span> <span class="nc">PurchaseHistory</span><span class="o">::</span><span class="nf">recordPurchase</span><span class="p">(</span><span class="n">string</span> <span class="nv">$bookTitle</span><span class="p">,</span> <span class="n">string</span> <span class="nv">$customerName</span><span class="p">)</span><span class="o">:</span> <span class="n">void</span> <span class="p">{</span><span class="c1">#620 ▶}</span>
+    <span class="o">-</span><span class="n">name</span><span class="o">:</span> <span class="s2">"PurchaseHistory::recordPurchase"</span>
+    <span class="o">-</span><span class="n">batchHandler</span><span class="o">:</span> <span class="kc">null</span>
+    <span class="o">-</span><span class="n">options</span><span class="o">:</span> <span class="k">array</span><span class="o">:</span><span class="mi">1</span> <span class="p">[</span><span class="err">▼</span>
+        <span class="s2">"method"</span> <span class="o">=&gt;</span> <span class="s2">"recordPurchase"</span>
+    <span class="p">]</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>To make it possible for the middleware to call our method as a handler, we can wrap it in another closure with the 
+message as an argument, or with no arguments at all.</p>
+
+<p>To do that, we will create a new implementation of the locator interface which will decorate the existing one provided 
+by the component, and which will wrap the found handlers if needed.</p>
+
+<p>For now, let’s only create the decorator and return any result that we’ll get from the decorated class.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Symfony\Component\Messenger\Envelope</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Symfony\Component\Messenger\Handler\HandlersLocatorInterface</span><span class="p">;</span>
+
+<span class="kd">class</span> <span class="nc">WrappingHandlersLocator</span> <span class="kd">implements</span> <span class="nc">HandlersLocatorInterface</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="kt">HandlersLocatorInterface</span> <span class="nv">$decorated</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">HandlersLocatorInterface</span> <span class="nv">$decorated</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">decorated</span> <span class="o">=</span> <span class="nv">$decorated</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getHandlers</span><span class="p">(</span><span class="kt">Envelope</span> <span class="nv">$envelope</span><span class="p">):</span> <span class="kt">iterable</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">decorated</span><span class="o">-&gt;</span><span class="nf">getHandlers</span><span class="p">(</span><span class="nv">$envelope</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Next, we need to make the middleware use our decorator as a locator instead of the component’s one (that we’re 
+decorating).</p>
+
+<p>The Messenger component uses the <code class="language-plaintext highlighter-rouge">\Symfony\Component\Messenger\DependencyInjection\MessengerPass</code> compiler pass to 
+register its internal services in the application’s service container. There, we can see that it will register separate 
+services of both the middleware and the handlers locator for each of the message busses that we have:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="c1">// from the \Symfony\Component\Messenger\DependencyInjection\MessengerPass class</span>
+
+<span class="c1">// ...</span>
+
+<span class="k">foreach</span> <span class="p">(</span><span class="nv">$busIds</span> <span class="k">as</span> <span class="nv">$bus</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">register</span><span class="p">(</span><span class="nv">$locatorId</span> <span class="o">=</span> <span class="nv">$bus</span><span class="mf">.</span><span class="s1">'.messenger.handlers_locator'</span><span class="p">,</span> <span class="nc">HandlersLocator</span><span class="o">::</span><span class="n">class</span><span class="p">)</span>
+        <span class="o">-&gt;</span><span class="nf">setArgument</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nv">$handlersLocatorMappingByBus</span><span class="p">[</span><span class="nv">$bus</span><span class="p">]</span> <span class="o">??</span> <span class="p">[])</span>
+    <span class="p">;</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">has</span><span class="p">(</span><span class="nv">$handleMessageId</span> <span class="o">=</span> <span class="nv">$bus</span><span class="mf">.</span><span class="s1">'.middleware.handle_message'</span><span class="p">))</span> <span class="p">{</span>
+        <span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">getDefinition</span><span class="p">(</span><span class="nv">$handleMessageId</span><span class="p">)</span>
+            <span class="o">-&gt;</span><span class="nf">replaceArgument</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="k">new</span> <span class="nc">Reference</span><span class="p">(</span><span class="nv">$locatorId</span><span class="p">))</span>
+        <span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// ...</span></code></pre></figure>
+
+<p>As we created two message busses at the beginning of the article (<code class="language-plaintext highlighter-rouge">command_bus</code> and <code class="language-plaintext highlighter-rouge">event_bus</code>), we can confirm that we 
+have two services for the handlers locator in the container:</p>
+
+<figure class="highlight"><pre><code class="language-text" data-lang="text">------------------------------------------- -------------------------------------------
+Service ID                                  Class name
+------------------------------------------- ------------------------------------------- 
+command_bus.messenger.handlers_locator      Symfony\Component\Messenger\Handler\HandlersLocator
+event_bus.messenger.handlers_locator        Symfony\Component\Messenger\Handler\HandlersLocator
+...</code></pre></figure>
+
+<p>Now we need a new compiler pass that will also register our locator implementation as a separate service for each of the 
+busses. Each of the new services should also be marked as decorator that will decorate the existing locator service for 
+the appropriate bus. We also need the new services marked as autowired, so they will get the appropriate locator 
+instance injected when instantiated.</p>
+
+<p>Each of the busses that we have registered in the container is tagged with the <code class="language-plaintext highlighter-rouge">messenger.bus</code> tag, so we can use that
+to find the list of ids of the message bus services.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Symfony\Component\DependencyInjection\ContainerBuilder</span><span class="p">;</span>
+
+<span class="kd">class</span> <span class="nc">HandlersLocatorCompilerPass</span> <span class="kd">implements</span> <span class="nc">CompilerPassInterface</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">process</span><span class="p">(</span><span class="kt">ContainerBuilder</span> <span class="nv">$container</span><span class="p">):</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="nv">$busses</span> <span class="o">=</span> <span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">findTaggedServiceIds</span><span class="p">(</span><span class="s1">'messenger.bus'</span><span class="p">);</span>
+        <span class="nv">$busIds</span> <span class="o">=</span> <span class="nb">array_keys</span><span class="p">(</span><span class="nv">$busses</span><span class="p">);</span>
+    
+        <span class="k">foreach</span> <span class="p">(</span><span class="nv">$busIds</span> <span class="k">as</span> <span class="nv">$busId</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nv">$decoratorId</span> <span class="o">=</span> <span class="nv">$busId</span> <span class="mf">.</span> <span class="s1">'.messenger.wrapping_handlers_locator'</span><span class="p">;</span>
+            <span class="nv">$originalLocatorId</span> <span class="o">=</span> <span class="nv">$busId</span> <span class="mf">.</span> <span class="s1">'.messenger.handlers_locator'</span><span class="p">;</span>
+            
+            <span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">register</span><span class="p">(</span><span class="nv">$decoratorId</span><span class="p">,</span> <span class="nc">WrappingHandlersLocator</span><span class="o">::</span><span class="n">class</span><span class="p">)</span>
+                <span class="o">-&gt;</span><span class="nf">setAutowired</span><span class="p">(</span><span class="kc">true</span><span class="p">)</span>
+                <span class="o">-&gt;</span><span class="nf">setDecoratedService</span><span class="p">(</span><span class="nv">$originalLocatorId</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Finally, we need to register the compiler pass in the application’s kernel:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Symfony\Component\DependencyInjection\ContainerBuilder</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Symfony\Component\HttpKernel\Kernel</span> <span class="k">as</span> <span class="nc">BaseKernel</span><span class="p">;</span>
+
+<span class="kd">class</span> <span class="nc">Kernel</span> <span class="kd">extends</span> <span class="nc">BaseKernel</span>
+<span class="p">{</span>
+    <span class="c1">// ...</span>
+
+    <span class="k">protected</span> <span class="k">function</span> <span class="n">build</span><span class="p">(</span><span class="kt">ContainerBuilder</span> <span class="nv">$container</span><span class="p">):</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="c1">// ...</span>
+
+        <span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">addCompilerPass</span><span class="p">(</span><span class="k">new</span> <span class="nc">HandlersLocatorCompilerPass</span><span class="p">());</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Let’s take a look at the list of services now:</p>
+
+<figure class="highlight"><pre><code class="language-text" data-lang="text">-------------------------------------------             -------------------------------------------
+Service ID                                              Class name
+-------------------------------------------             ------------------------------------------- 
+command_bus.messenger.handlers_locator                  alias for "command_bus.messenger.wrapping_handlers_locator"
+command_bus.messenger.wrapping_handlers_locator         WrappingHandlersLocator
+command_bus.messenger.wrapping_handlers_locator.inner   Symfony\Component\Messenger\Handler\HandlersLocator
+
+event_bus.messenger.handlers_locator                    alias for "event_bus.messenger.wrapping_handlers_locator"
+event_bus.messenger.wrapping_handlers_locator           WrappingHandlersLocator
+event_bus.messenger.wrapping_handlers_locator.inner     Symfony\Component\Messenger\Handler\HandlersLocator
+...</code></pre></figure>
+
+<p>As we saw in the <code class="language-plaintext highlighter-rouge">MessengerPass</code> compiler pass above, each service of the <code class="language-plaintext highlighter-rouge">HandleMessageMiddleware</code> class 
+(<code class="language-plaintext highlighter-rouge">[bus id].middleware.handle_message</code>) will receive the appropriate <code class="language-plaintext highlighter-rouge">[bus id].messenger.handlers_locator</code> service as 
+argument in the constructor. For example, when instantiating the <code class="language-plaintext highlighter-rouge">event_bus.middleware.handle_message</code> service, the 
+container will pass the <code class="language-plaintext highlighter-rouge">event_bus.messenger.handlers_locator</code> service as an argument.</p>
+
+<p>With the compiler pass that we just registered, we changed, for example, the <code class="language-plaintext highlighter-rouge">event_bus.messenger.handlers_locator</code> 
+service to be an alias for our own implementation of the locator, meaning that the component’s middleware will now be 
+getting an instance of our locator.</p>
+
+<p>We can confirm that by checking the instance received in the middleware:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nc">WrappingHandlersLocator</span> <span class="p">{</span><span class="c1">#239 ▼</span>
+    <span class="o">-</span><span class="n">decorated</span><span class="o">:</span> <span class="nc">Symfony\Component\Messenger\Handler\HandlersLocator</span> <span class="p">{</span><span class="c1">#237 ▶}</span>
+<span class="p">}</span></code></pre></figure>
+
+<h3 id="resolving-the-values-for-the-arguments">Resolving the values for the arguments</h3>
+
+<p>Now that we’re in control of how the handlers will be found, we need to actually implement the <code class="language-plaintext highlighter-rouge">getHandlers</code> method.</p>
+
+<p>We already saw that we can get the list of handlers for the dispatched message by using the decorated locator. After 
+that, we can iterate over that list, wrap each of the handlers if needed and then yield it.</p>
+
+<p>For now, we’ll assume that the dispatched message/event contains enough data for the handler’s arguments. Later we’ll 
+see what we can do for other cases as well.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="c1">// inside the WrappingHandlersLocator class:</span>
+
+<span class="k">public</span> <span class="k">function</span> <span class="n">getHandlers</span><span class="p">(</span><span class="kt">Envelope</span> <span class="nv">$envelope</span><span class="p">):</span> <span class="kt">iterable</span>
+<span class="p">{</span>
+    <span class="cd">/** @var iterable&lt;int, HandlerDescriptor&gt; $handlerDescriptors */</span>
+    <span class="nv">$handlerDescriptors</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">decorated</span><span class="o">-&gt;</span><span class="nf">getHandlers</span><span class="p">(</span><span class="nv">$envelope</span><span class="p">);</span>
+    <span class="nv">$message</span> <span class="o">=</span> <span class="nv">$envelope</span><span class="o">-&gt;</span><span class="nf">getMessage</span><span class="p">();</span>
+
+    <span class="k">foreach</span> <span class="p">(</span><span class="nv">$handlerDescriptors</span> <span class="k">as</span> <span class="nv">$handlerDescriptor</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">shouldWrapHandler</span><span class="p">(</span><span class="nv">$handlerDescriptor</span><span class="p">,</span> <span class="nv">$message</span><span class="p">))</span> <span class="p">{</span>
+            <span class="k">yield</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">wrapHandler</span><span class="p">(</span><span class="nv">$handlerDescriptor</span><span class="p">,</span> <span class="nv">$message</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+            <span class="k">yield</span> <span class="nv">$handlerDescriptor</span><span class="p">;</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>To determine if a handler should we wrapped, we’ll be checking its list of arguments. Basically, we won’t wrap a 
+handler only if it has a single argument type-hinted with the message’s own class. These handlers should continue to be
+called as before.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="c1">// inside the WrappingHandlersLocator class:</span>
+
+<span class="k">private</span> <span class="k">function</span> <span class="n">shouldWrapHandler</span><span class="p">(</span><span class="kt">HandlerDescriptor</span> <span class="nv">$handlerDescriptor</span><span class="p">,</span> <span class="kt">object</span> <span class="nv">$message</span><span class="p">):</span> <span class="kt">bool</span>
+<span class="p">{</span>
+    <span class="nv">$arguments</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">getHandlerArguments</span><span class="p">(</span><span class="nv">$handlerDescriptor</span><span class="p">);</span>
+
+    <span class="k">return</span> <span class="p">(</span><span class="nb">count</span><span class="p">(</span><span class="nv">$arguments</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="o">||</span> <span class="p">(</span><span class="nb">count</span><span class="p">(</span><span class="nv">$arguments</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="o">||</span> <span class="p">(</span><span class="o">!</span><span class="nv">$arguments</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">-&gt;</span><span class="nb">getType</span><span class="p">()</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">()</span> <span class="o">==</span> <span class="nb">get_class</span><span class="p">(</span><span class="nv">$message</span><span class="p">));</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>We already saw that the handler, which we can get from the handler descriptor is a closure, so we can use it to 
+create a <code class="language-plaintext highlighter-rouge">ReflectionFunction</code> object. From that object we can get a list of <code class="language-plaintext highlighter-rouge">ReflectionParameter</code> objects that will 
+represent the arguments of the handler.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="c1">// inside the WrappingHandlersLocator class:</span>
+
+<span class="cd">/** @return array&lt;int, ReflectionParameter&gt; */</span>
+<span class="k">private</span> <span class="k">function</span> <span class="n">getHandlerArguments</span><span class="p">(</span><span class="kt">HandlerDescriptor</span> <span class="nv">$handlerDescriptor</span><span class="p">):</span> <span class="kt">array</span>
+<span class="p">{</span>
+    <span class="nv">$function</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ReflectionFunction</span><span class="p">(</span><span class="nv">$handlerDescriptor</span><span class="o">-&gt;</span><span class="nf">getHandler</span><span class="p">());</span>
+
+    <span class="k">return</span> <span class="nv">$function</span><span class="o">-&gt;</span><span class="nf">getParameters</span><span class="p">();</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>To do the wrapping, we need the list of arguments expected by the handler, and values for each of them.
+After that, we will create a new handler descriptor which, as we saw before, will be yielded instead of the original 
+one.</p>
+
+<p>When creating the new handler descriptor, we’ll pass a new closure with no arguments, which internally will call the 
+original one with the resolved values as arguments.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="c1">// inside the WrappingHandlersLocator class:</span>
+
+<span class="k">private</span> <span class="k">function</span> <span class="n">wrapHandler</span><span class="p">(</span><span class="kt">HandlerDescriptor</span> <span class="nv">$handlerDescriptor</span><span class="p">,</span> <span class="kt">object</span> <span class="nv">$message</span><span class="p">):</span> <span class="kt">HandlerDescriptor</span>
+<span class="p">{</span>
+    <span class="nv">$handlerArguments</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">getHandlerArguments</span><span class="p">(</span><span class="nv">$handlerDescriptor</span><span class="p">);</span>
+    <span class="nv">$handlerArgumentValues</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">resolveValuesForHandlerArguments</span><span class="p">(</span><span class="nv">$handlerArguments</span><span class="p">,</span> <span class="nv">$message</span><span class="p">);</span>
+
+    <span class="k">return</span> <span class="k">new</span> <span class="nc">HandlerDescriptor</span><span class="p">(</span>
+        <span class="k">fn</span><span class="p">()</span> <span class="o">=&gt;</span> <span class="nv">$handlerDescriptor</span><span class="o">-&gt;</span><span class="nf">getHandler</span><span class="p">()(</span><span class="mf">...</span><span class="nv">$handlerArgumentValues</span><span class="p">),</span>
+        <span class="p">[</span>
+            <span class="s1">'alias'</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">generateHandlerAlias</span><span class="p">(</span><span class="nv">$handlerDescriptor</span><span class="p">)</span>
+        <span class="p">]</span>
+    <span class="p">);</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>As we saw before, in each of the handler descriptors, we have a name for the handler. After a handler finishes handling a 
+message, the <code class="language-plaintext highlighter-rouge">HandleMessageMiddleware</code> middleware adds a new <code class="language-plaintext highlighter-rouge">\Symfony\Component\Messenger\Stamp\HandledStamp</code> stamp to 
+the envelope that wraps the message, with the name of the handler. The same middleware also checks the received messages 
+for the same type of stamp in order to prevent any of the handlers to handle the same message twice.</p>
+
+<p>In our case, if we wrap multiple handlers, all the newly created handlers will have “Closure” as a name by default. That 
+will prevent the message to be handled by multiple handlers (e.g. if we have multiple listeners), even thought they are 
+completely different ones.</p>
+
+<p>It is not possible to change the name of the handler completely, but there’s an option to submit an alias when creating
+the handler descriptor. That alias is later used as part of the name, so each handler will be treated as unique.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="c1">// inside the WrappingHandlersLocator class:</span>
+
+<span class="k">private</span> <span class="k">function</span> <span class="n">generateHandlerAlias</span><span class="p">(</span><span class="kt">HandlerDescriptor</span> <span class="nv">$handlerDescriptor</span><span class="p">):</span> <span class="kt">string</span>
+<span class="p">{</span>
+    <span class="nv">$function</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ReflectionFunction</span><span class="p">(</span><span class="nv">$handlerDescriptor</span><span class="o">-&gt;</span><span class="nf">getHandler</span><span class="p">());</span>
+
+    <span class="k">return</span> <span class="nb">sprintf</span><span class="p">(</span>
+        <span class="s2">"%s::%s"</span><span class="p">,</span>
+        <span class="nv">$function</span><span class="o">-&gt;</span><span class="nf">getClosureScopeClass</span><span class="p">()</span><span class="o">?-&gt;</span><span class="nf">getShortName</span><span class="p">(),</span>
+        <span class="nv">$function</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">()</span>
+    <span class="p">);</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>We already have the mechanism for getting the list of arguments, so now we need to resolve the values, by mapping each 
+of them to some properties of the message.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="c1">// inside the WrappingHandlersLocator class:</span>
+
+<span class="cd">/**
+ * @param array&lt;int, ReflectionParameter&gt; $arguments
+ * @return array&lt;int, mixed&gt;
+ */</span>
+<span class="k">private</span> <span class="k">function</span> <span class="n">resolveValuesForHandlerArguments</span><span class="p">(</span><span class="kt">array</span> <span class="nv">$arguments</span><span class="p">,</span> <span class="kt">object</span> <span class="nv">$message</span><span class="p">):</span> <span class="kt">array</span>
+<span class="p">{</span>
+    <span class="k">return</span> <span class="nb">array_map</span><span class="p">(</span>
+        <span class="k">fn</span><span class="p">(</span><span class="kt">ReflectionParameter</span> <span class="nv">$argument</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">resolveValueForHandlerArgument</span><span class="p">(</span><span class="nv">$argument</span><span class="p">,</span> <span class="nv">$message</span><span class="p">),</span>
+        <span class="nv">$arguments</span>
+    <span class="p">);</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>The event that we’re dispatching has more properties than we need in the handler, and additionally, one of the 
+properties has a different name than the handler’s argument. Because of that, we need a way to help the locator to map
+the properties to the arguments properly, so we’ll create a new PHP attribute called, for example, <code class="language-plaintext highlighter-rouge">ExtractedValue</code>.</p>
+
+<p>We’ll be declaring this attribute on those arguments in the handler’s signature that have no matching property in the 
+handled message with same name, or if we intentionally want to use another one. It will have a <code class="language-plaintext highlighter-rouge">messageProperty</code> string 
+property that we’ll use to indicate which property of the message should be used for that particular argument. As the 
+property will be optional, we’ll be able to declare the attribute on an argument even if we don’t want to explicitly 
+specify a property name.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Attribute</span><span class="p">;</span>
+
+<span class="na">#[Attribute(Attribute::TARGET_PARAMETER)]</span>
+<span class="kd">class</span> <span class="nc">ExtractedValue</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="kt">?string</span> <span class="nv">$messageProperty</span> <span class="o">=</span> <span class="kc">null</span>
+    <span class="p">)</span> <span class="p">{</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>In our case, we’ll be passing the event’s <code class="language-plaintext highlighter-rouge">$title</code> property as a value for the <code class="language-plaintext highlighter-rouge">$bookTitle</code> argument, so we will declare
+the attribute on the argument, and we’ll specify the property name. As the <code class="language-plaintext highlighter-rouge">$customerName</code> argument can be automatically 
+mapped to the <code class="language-plaintext highlighter-rouge">customerName</code> property of the event, we can choose whether to declare the attribute with no arguments, or 
+to just omit it.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">PurchaseHistory</span>
+<span class="p">{</span>
+    <span class="na">#[Listener(event: BookWasPurchased::class)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">recordPurchase</span><span class="p">(</span>
+        <span class="err">#</span><span class="p">[</span><span class="nf">ExtractedValue</span><span class="p">(</span><span class="n">messageProperty</span><span class="o">:</span> <span class="s2">"title"</span><span class="p">)]</span> <span class="n">string</span> <span class="nv">$bookTitle</span><span class="p">,</span>
+        <span class="err">#</span><span class="p">[</span><span class="nc">ExtractedValue</span><span class="p">]</span> <span class="n">string</span> <span class="nv">$customerName</span> <span class="c1">// we could omit the attribute here</span>
+    <span class="p">)</span><span class="o">:</span> <span class="n">void</span> <span class="p">{</span>
+        <span class="c1">// ...</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Back to the locator, where we need to resolve the values for each of the attributes. When resolving the value for a
+single attribute, we’ll first try to fetch the declared <code class="language-plaintext highlighter-rouge">ExtractedValue</code> attribute.</p>
+
+<p>If there’s such attribute declared, we’ll check if it contains a specified property name. In the cases when there is no
+attribute or no method name has been explicitly specified, we’ll assume that we need to use the argument’s name.</p>
+
+<p>Now that we have the needed property name, we’ll try to fetch its value from the message object. If there’s no such 
+property we’ll throw an exception.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="c1">// inside the WrappingHandlersLocator class:</span>
+
+<span class="k">private</span> <span class="k">function</span> <span class="n">resolveValueForHandlerArgument</span><span class="p">(</span>
+    <span class="kt">ReflectionParameter</span> <span class="nv">$argument</span><span class="p">,</span>
+    <span class="kt">object</span> <span class="nv">$message</span>
+<span class="p">):</span> <span class="kt">mixed</span> <span class="p">{</span>
+    <span class="nv">$attribute</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">getAttributeForArgument</span><span class="p">(</span><span class="nv">$argument</span><span class="p">);</span>
+
+    <span class="nv">$messagePropertyName</span> <span class="o">=</span> <span class="nv">$attribute</span><span class="o">?-&gt;</span><span class="n">messageProperty</span> <span class="o">??</span> <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">();</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="nb">property_exists</span><span class="p">(</span><span class="nv">$message</span><span class="p">,</span> <span class="nv">$messagePropertyName</span><span class="p">))</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$message</span><span class="o">-&gt;</span><span class="p">{</span><span class="nv">$messagePropertyName</span><span class="p">};</span>
+    <span class="p">}</span>
+
+    <span class="k">throw</span> <span class="k">new</span> <span class="nc">Exception</span><span class="p">(</span><span class="nb">sprintf</span><span class="p">(</span>
+        <span class="s2">"Missing handler argument mapping for the </span><span class="se">\"</span><span class="s2">%s</span><span class="se">\"</span><span class="s2"> argument of </span><span class="se">\"</span><span class="s2">%s::%s</span><span class="se">\"</span><span class="s2">."</span><span class="p">,</span>
+        <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">(),</span>
+        <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">getDeclaringClass</span><span class="p">()</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">(),</span>
+        <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">getDeclaringFunction</span><span class="p">()</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">()</span>
+    <span class="p">));</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>We already have the argument as a <code class="language-plaintext highlighter-rouge">ReflectionParameter</code> object, so getting the attribute is easy. We’ll fetch the 
+attributes from the argument, which will give us a (possibly empty) list of <code class="language-plaintext highlighter-rouge">ReflectionAttribute</code> objects. We’ve not 
+flagged the attribute as repeatable, so we can assume that there can be up to one declaration per argument.</p>
+
+<p>If the list of attributes is not empty, calling <code class="language-plaintext highlighter-rouge">newInstance</code> on the first element will give an instance of the 
+attribute with the properties we’ve specified when declaring it on the handler. Otherwise, we’ll just return <code class="language-plaintext highlighter-rouge">null</code>.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="c1">// inside the WrappingHandlersLocator class:</span>
+
+<span class="k">private</span> <span class="k">function</span> <span class="n">getAttributeForArgument</span><span class="p">(</span><span class="kt">ReflectionParameter</span> <span class="nv">$argument</span><span class="p">):</span> <span class="kt">?ExtractedValue</span>
+<span class="p">{</span>
+    <span class="nv">$attributes</span> <span class="o">=</span> <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">getAttributes</span><span class="p">(</span><span class="nc">ExtractedValue</span><span class="o">::</span><span class="n">class</span><span class="p">);</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="nb">count</span><span class="p">(</span><span class="nv">$attributes</span><span class="p">))</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="kc">null</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="nv">$attributes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">-&gt;</span><span class="nf">newInstance</span><span class="p">();</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>With what we’ve done so far, whenever the component’s locator finds a handler with a signature that is not suitable by
+default, we’ll wrap it within a closure that will act as some sort of adapter that will pass the correct arguments to 
+the handler.</p>
+
+<p>If we dispatch the event again, we’ll get the expected result:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nv">$eventBus</span><span class="o">-&gt;</span><span class="nf">dispatch</span><span class="p">(</span>
+    <span class="k">new</span> <span class="nc">BookWasPurchased</span><span class="p">(</span><span class="s2">"Example Book"</span><span class="p">,</span> <span class="s2">"John Smith"</span><span class="p">,</span> <span class="nv">$now</span><span class="p">)</span>
+<span class="p">);</span></code></pre></figure>
+
+<blockquote>
+  <p>“John Smith bought the “Example Book” book.”</p>
+</blockquote>
+
+<p>Additionally, when checking the list of messages and handlers, we’ll still get the correct listener:</p>
+
+<figure class="highlight"><pre><code class="language-text" data-lang="text">BookWasPurchased                                                                                           
+    handled by PurchaseHistory (when method=recordPurchase)   </code></pre></figure>
+
+<p><small><small>
+    <em>The whole WrappingHandlersLocator class written up to this point is available 
+    <a href="https://gist.github.com/angelov/689ce0ffd1f9412e12a85b5c3903e697" target="_blank">here</a>.</em>
+</small></small></p>
+
+<h3 id="handlers-with-additional-arguments-with-default-values">Handlers with additional arguments with default values</h3>
+
+<p>Now that we have this working, let’s add another argument to the handler that won’t be present in the event, but will 
+have a default value.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">PurchaseHistory</span>
+<span class="p">{</span>
+    <span class="na">#[Listener(event: BookWasPurchased::class)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">recordPurchase</span><span class="p">(</span>
+        <span class="err">#</span><span class="p">[</span><span class="nf">ExtractedValue</span><span class="p">(</span><span class="n">messageProperty</span><span class="o">:</span> <span class="s2">"title"</span><span class="p">)]</span> <span class="n">string</span> <span class="nv">$bookTitle</span><span class="p">,</span>
+        <span class="n">string</span> <span class="nv">$customerName</span><span class="p">,</span>
+        <span class="n">int</span> <span class="nv">$bookAge</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="p">)</span><span class="o">:</span> <span class="n">void</span> <span class="p">{</span>
+        <span class="nf">dd</span><span class="p">(</span><span class="nb">sprintf</span><span class="p">(</span>
+            <span class="s2">"%s bought the </span><span class="se">\"</span><span class="s2">%s</span><span class="se">\"</span><span class="s2"> book. The book is %d year(s) old."</span><span class="p">,</span>
+            <span class="nv">$customerName</span><span class="p">,</span>
+            <span class="nv">$bookTitle</span><span class="p">,</span>
+            <span class="nv">$bookAge</span>
+        <span class="p">));</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>We’ve made the locator to be throwing exceptions if we try to map an argument that has no matching property with the 
+same name in the message object, or a declared attribute with explicitly specified property name. Because of that, 
+dispatching the event now will result with the following exception:</p>
+
+<blockquote>
+  <p>Missing handler argument mapping for the “bookAge” argument of “PurchaseHistory::recordPurchase”.<br />
+<sup>Exception</sup></p>
+</blockquote>
+
+<p>As the argument has a default value in the handler’s signature, we should be able to pass that value when we cannot 
+retrieve something else from the message.</p>
+
+<p>To achieve that, when no property for a given argument exists in the message object, we’ll check if the argument has a 
+default value specified. If a default value is available, we’ll use that one. Otherwise, we’ll still throw the 
+exception.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="c1">// inside the WrappingHandlersLocator class:</span>
+
+<span class="k">private</span> <span class="k">function</span> <span class="n">resolveValueForHandlerArgument</span><span class="p">(</span>
+    <span class="kt">ReflectionParameter</span> <span class="nv">$argument</span><span class="p">,</span>
+    <span class="kt">object</span> <span class="nv">$message</span>
+<span class="p">):</span> <span class="kt">mixed</span> <span class="p">{</span>
+    <span class="nv">$attribute</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">getAttributeForArgument</span><span class="p">(</span><span class="nv">$argument</span><span class="p">);</span>
+
+    <span class="nv">$messagePropertyName</span> <span class="o">=</span> <span class="nv">$attribute</span><span class="o">?-&gt;</span><span class="n">messageProperty</span> <span class="o">??</span> <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">();</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="nb">property_exists</span><span class="p">(</span><span class="nv">$message</span><span class="p">,</span> <span class="nv">$messagePropertyName</span><span class="p">))</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">isDefaultValueAvailable</span><span class="p">())</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">getDefaultValue</span><span class="p">();</span>
+    <span class="p">}</span>
+
+    <span class="k">throw</span> <span class="k">new</span> <span class="nc">Exception</span><span class="p">(</span><span class="nb">sprintf</span><span class="p">(</span>
+        <span class="s2">"Missing handler argument mapping or default value for the </span><span class="se">\"</span><span class="s2">%s</span><span class="se">\"</span><span class="s2"> argument of </span><span class="se">\"</span><span class="s2">%s::%s</span><span class="se">\"</span><span class="s2">."</span><span class="p">,</span>
+        <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">(),</span>
+        <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">getDeclaringClass</span><span class="p">()</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">(),</span>
+        <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">getDeclaringFunction</span><span class="p">()</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">()</span>
+    <span class="p">));</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>If we dispatch the event again, we’ll get the new expected result:</p>
+
+<blockquote>
+  <p>“John Smith bought the “Example Book” book. The book is 1 year(s) old.”</p>
+</blockquote>
+
+<p><small><small>
+    <em>The whole WrappingHandlersLocator class written up to this point is available
+    <a href="https://gist.github.com/angelov/b57d76cc568ec83825897180a1623fad" target="_blank">here</a>.</em>
+</small></small></p>
+
+<h3 id="handlers-with-additional-arguments-with-no-default-values">Handlers with additional arguments with no default values</h3>
+
+<p>Next, let’s add one more argument to the caller, called <code class="language-plaintext highlighter-rouge">$sellerName</code>. However, this time we won’t specify a default 
+value for it.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">PurchaseHistory</span>
+<span class="p">{</span>
+    <span class="na">#[Listener(event: BookWasPurchased::class)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">recordPurchase</span><span class="p">(</span>
+        <span class="err">#</span><span class="p">[</span><span class="nf">ExtractedValue</span><span class="p">(</span><span class="n">messageProperty</span><span class="o">:</span> <span class="s2">"title"</span><span class="p">)]</span> <span class="n">string</span> <span class="nv">$bookTitle</span><span class="p">,</span>
+        <span class="n">string</span> <span class="nv">$customerName</span><span class="p">,</span>
+        <span class="n">string</span> <span class="nv">$sellerName</span><span class="p">,</span>
+        <span class="n">int</span> <span class="nv">$bookAge</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="p">)</span><span class="o">:</span> <span class="n">void</span> <span class="p">{</span>
+        <span class="nf">dd</span><span class="p">(</span><span class="nb">sprintf</span><span class="p">(</span>
+            <span class="s2">"%s bought the </span><span class="se">\"</span><span class="s2">%s</span><span class="se">\"</span><span class="s2"> book. The book is %d year(s) old and was sold by %s."</span><span class="p">,</span>
+            <span class="nv">$customerName</span><span class="p">,</span>
+            <span class="nv">$bookTitle</span><span class="p">,</span>
+            <span class="nv">$bookAge</span><span class="p">,</span>
+            <span class="nv">$sellerName</span>
+        <span class="p">));</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Just as before, as this argument has no mapped property in the message object and no default value, we’ll end up with an
+exception:</p>
+
+<blockquote>
+  <p>Missing handler argument mapping or default value for the “sellerName” argument of “PurchaseHistory::recordPurchase”.
+<br />
+<sup>Exception</sup></p>
+</blockquote>
+
+<p>One option that we have here is to leave the code as it is, and just disallow methods with such arguments to be 
+registered as message handlers in our application.</p>
+
+<p>Another option is to add a way to declare a default value for the arguments that will be used only when handling the 
+message, but not when regularly calling the method.</p>
+
+<p>For the second option, we’ll add a new property to the attribute, called <code class="language-plaintext highlighter-rouge">defaultValue</code> which will hold the “special” 
+default value.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[Attribute(Attribute::TARGET_PARAMETER)]</span>
+<span class="kd">class</span> <span class="nc">ExtractedValue</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="kt">?string</span> <span class="nv">$messageProperty</span> <span class="o">=</span> <span class="kc">null</span><span class="p">,</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="kt">mixed</span> <span class="nv">$defaultValue</span> <span class="o">=</span> <span class="kc">null</span>
+    <span class="p">)</span> <span class="p">{</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>And we can declare the attribute to the problematic argument:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">PurchaseHistory</span>
+<span class="p">{</span>
+    <span class="na">#[Listener(event: BookWasPurchased::class)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">recordPurchase</span><span class="p">(</span>
+        <span class="c1">// ...</span>
+        <span class="err">#</span><span class="p">[</span><span class="nf">ExtractedValue</span><span class="p">(</span><span class="n">defaultValue</span><span class="o">:</span> <span class="s2">"Unknown seller"</span><span class="p">)]</span> <span class="n">string</span> <span class="nv">$sellerName</span><span class="p">,</span>
+        <span class="c1">// ...</span>
+    <span class="p">)</span><span class="o">:</span> <span class="n">void</span> <span class="p">{</span>
+        <span class="c1">// ...</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>When resolving the values for such arguments, we’ll check if the attribute declared on it (if present) has a 
+specified default value to be used.</p>
+
+<p>As this property can be specified on attributes applied to properties with default value, it’s up to us to decide which 
+default value we want to have a higher priority when choosing. Here, we’ll just ignore the one specified in the 
+attribute if a default value is specified in the handler’s signature.</p>
+
+<p>As a last resort, we’ll still throw an exception, just as before.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="c1">// inside the WrappingHandlersLocator class:</span>
+
+<span class="k">private</span> <span class="k">function</span> <span class="n">resolveValueForHandlerArgument</span><span class="p">(</span>
+    <span class="kt">ReflectionParameter</span> <span class="nv">$argument</span><span class="p">,</span>
+    <span class="kt">object</span> <span class="nv">$message</span>
+<span class="p">):</span> <span class="kt">mixed</span> <span class="p">{</span>
+    <span class="nv">$attribute</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">getAttributeForArgument</span><span class="p">(</span><span class="nv">$argument</span><span class="p">);</span>
+
+    <span class="nv">$messagePropertyName</span> <span class="o">=</span> <span class="nv">$attribute</span><span class="o">?-&gt;</span><span class="n">messageProperty</span> <span class="o">??</span> <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">();</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="nb">property_exists</span><span class="p">(</span><span class="nv">$message</span><span class="p">,</span> <span class="nv">$messagePropertyName</span><span class="p">))</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">isDefaultValueAvailable</span><span class="p">())</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="nv">$attribute</span><span class="o">?-&gt;</span><span class="n">defaultValue</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$attribute</span><span class="o">-&gt;</span><span class="n">defaultValue</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">throw</span> <span class="k">new</span> <span class="nc">Exception</span><span class="p">(</span><span class="mf">...</span><span class="p">);</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Dispatching the event again will give us the expected output:</p>
+
+<blockquote>
+  <p>“John Smith bought the “Example Book” book. The book is 1 year(s) old and was sold by Unknown seller.”</p>
+</blockquote>
+
+<p><small><small>
+    <em>The whole WrappingHandlersLocator class written up to this point is available
+    <a href="https://gist.github.com/angelov/f5cd2eb4ea21ed65fc82caa25c55ba8d" target="_blank">here</a>.</em>
+</small></small></p>
+
+<h3 id="handlers-with-no-arguments">Handlers with no arguments</h3>
+
+<p>As a final example, let’s try what will happen if we register a method with no arguments, as a listener for our event.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">PurchasesCounter</span>
+<span class="p">{</span>
+    <span class="na">#[Listener(event: BookWasPurchased::class)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">increaseNumber</span><span class="p">():</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="nf">dd</span><span class="p">(</span><span class="s2">"Number of purchases increased"</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>If we dispatch the event now, we’ll get the expected output:</p>
+
+<blockquote>
+  <p>“Number of purchases increased”</p>
+</blockquote>
+
+<p>Also, the list of message and handlers will now show us the both listeners for the event:</p>
+
+<figure class="highlight"><pre><code class="language-text" data-lang="text">BookWasPurchased                                                                                           
+    handled by PurchaseHistory (when method=recordPurchase)
+    handled by PurchasesCounter (when method=increaseNumber)</code></pre></figure>
+
+<h3 id="next-steps">Next steps</h3>
+
+<p>This is definitely not a complete solution, and most definitely does not cover all the possible cases. It can 
+additionally be adjusted accordingly to the application’s needs.</p>
+
+<p>For example, we can go further and also make it possible for the <code class="language-plaintext highlighter-rouge">ExtractedValue</code> attributes to be optionally nested as 
+part of the <code class="language-plaintext highlighter-rouge">Listener</code> attribute declared on the method, which is possible 
+<a href="https://www.php.net/releases/8.1/en.php#new_in_initializers" target="_blank">since PHP 8.1</a>. That way we can still 
+define everything we need, without bloating the methods’ signatures.</p>
+
+<p>As said before, please use this only as a basis for future experimentation, and make sure you won’t hurt your 
+application’s performance or maintainability by that.</p>
+
+<p><br />
+<small><small><small>
+    Photo for social media by <a href="https://www.pexels.com/photo/unpacked-boxes-in-middle-of-room-4246091/" target="_blank">Ketut Subiyanto</a>.
+</small></small></small></p>
+
+  </article>
+
+</div>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <p class="text"><small>
+        Unless otherwise stated, the content of this blog is licensed under a <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+        </small></p>
+
+      <p class="text" style="float: left;">
+        <small>Built with <a href="http://jekyllrb.com" target="_blank">Jekyll</a></small>
+      </p>
+
+      <p class="text" style="text-align: right;">
+        <small>Subscribe via <a href="/feed.xml">RSS</a></small>
+      </p>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width initial-scale=1">
+
+  <title>On creating cleaner and simpler commands</title>
+  <meta name="description" content="Commands, as part of the CQRS pattern, provide a clean way for representing intentions for changing some state in our application. We’ve been working with CQ...">
+
+	
+  		<meta content="article" property="og:type">
+	
+	<meta property="og:title" content="On creating cleaner and simpler commands" />
+	<meta property="og:description" content="Commands, as part of the CQRS pattern, provide a clean way for representing intentions for changing some state in our application. We’ve been working with CQ..." />
+	
+  		<meta content="http://angelovdejan.me/2017/08/21/on-creating-cleaner-and-simpler-commands.html" property="og:url">
+	
+	<meta property="og:site_name" content="Dejan Angelov" />
+	<meta property="og:image" content="http://angelovdejan.me/images/100_4188-cropped.jpg" />
+	<meta name="twitter:site" content="@angelovdejan" />
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://angelovdejan.me/2017/08/21/on-creating-cleaner-and-simpler-commands.html">
+  <link rel="alternate" type="application/atom+xml" title="Dejan Angelov" href="http://angelovdejan.me/feed.xml" />
+  <link rel="me" href="https://phpc.social/@angelov">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Dejan Angelov</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+          <a class="page-link" href="/">Blog</a>
+        
+          
+          <a class="page-link" href="/about/">About Me</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">On creating cleaner and simpler commands</h1>
+    <p class="post-meta">Aug 21, 2017 • Dejan Angelov</p>
+  </header>
+
+  <article class="post-content">
+    <p>Commands, as part of the CQRS pattern, provide a clean way for representing intentions for changing some state in our application. We’ve been working with CQRS for some time and it helped us significantly improve the quality of our code base. Meanwhile, we learned a lot, but we also made some mistakes. In this article we’ll discuss some of the mistakes we were making when using commands and what we did to improve them.</p>
+
+<p>Imagine that, for example, we want to promote an employee to another position. We would have something like the following:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">PromoteEmployeeCommand</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="nv">$employeeId</span><span class="p">;</span>
+    <span class="k">private</span> <span class="nv">$position</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">string</span> <span class="nv">$employeeId</span><span class="p">,</span> <span class="kt">string</span> <span class="nv">$position</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">employeeId</span> <span class="o">=</span> <span class="nv">$employeeId</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">position</span> <span class="o">=</span> <span class="nv">$position</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getEmployeeId</span><span class="p">()</span> <span class="p">:</span> <span class="kt">string</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">employeeId</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getPosition</span><span class="p">()</span> <span class="p">:</span> <span class="kt">string</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">position</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Instead of handling the business logic needed for changing an employee’s position inside a controller, we can now call this command, making our application independent of the HTTP layer. At same time, we let the controller serve their right purpose – transforming the received data and sending it to the application’s model layer.</p>
+
+<p>Taking the needed actions to actually promote the employee will be handled in a separate “handler” class:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">PromoteEmployeeCommandHandler</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">handle</span><span class="p">(</span><span class="kt">PromoteEmployeeCommand</span> <span class="nv">$command</span><span class="p">)</span> <span class="p">:</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="c1">// ...</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>If you’re not already familiar with the concept, you can read about CQRS, different types of messages for communication within the application and more in <a href="https://www.ibuildings.nl/node/262">this article</a> by Matthias Noback.</p>
+
+<p>However, there are cases when, if we don’t model our commands properly, we can introduce mess and confusion into our application and even make it hard to scale and debug.</p>
+
+<p>Such case is when we need to have commands for creating new resources. In that case, the amount of data we receive with the request may contain a long list of properties and values. In this article we’ll discuss some techniques for creating simpler and cleaner commands for this type of cases.</p>
+
+<p>Let’s imagine that we need to employ a new person in our company. Every employee would have <em>first name</em>, <em>last name</em>, <em>email address</em>, <em>phone number</em>, <em>position</em> and <em>salary</em>.</p>
+
+<h1 id="avoiding-data-arrays-as-only-argument-for-new-commands">Avoiding data arrays as only argument for new commands</h1>
+
+<p>Knowing that our HTTP library can easily provide us the needed data as an array extracted from the request, it may be tempting for us to make our command receive that array and let the appropriate handler deal with it:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">EmployNewPersonCommand</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="nv">$data</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">array</span> <span class="nv">$data</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">data</span> <span class="o">=</span> <span class="nv">$data</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getData</span><span class="p">()</span> <span class="p">:</span> <span class="kt">array</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">data</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>To create a new instance of this command, we just ask the request for the data and then pass the same array to the command:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="k">public</span> <span class="k">function</span> <span class="n">employAction</span><span class="p">(</span><span class="kt">Request</span> <span class="nv">$request</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="nv">$employeeData</span> <span class="o">=</span> <span class="nv">$request</span><span class="o">-&gt;</span><span class="n">request</span><span class="o">-&gt;</span><span class="nf">all</span><span class="p">();</span>
+
+    <span class="nv">$command</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">EmployNewPersonCommand</span><span class="p">(</span><span class="nv">$employeeData</span><span class="p">);</span>
+    <span class="c1">// ...</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Modeling the commands this way may seem really clean, allowing us to more rapidly create and execute new commands. However, as our application grows, this can become really messy and can cause a lot of confusion.</p>
+
+<p>One of the main problems here is that, whenever we need to create a new instance of the command, there is no information about what should be put inside the expected array of data. And don’t forget that the purpose of the commands is not to be called just from one point in our application (eg. only one controller method).</p>
+
+<p>With this problem, when somebody needs to create a new instance of the command, instead of just telling what they need to be done, they must find the appropriate handler for the needed command, dig inside it and determine what are the proper keys of the array and what should be put inside them.</p>
+
+<p>Even then, some of the keys may be mistaken or missed, so we are given a possibility to create commands with incomplete or invalid data.</p>
+
+<p>To ensure all the required information is passed to the command when it is created, we need to do some key existence checking in the commands’ constructors, or even worse, in their handlers.</p>
+
+<p>We can avoid such problems by making sure we always list all required information as separate arguments with proper types in the commands’ constructors, making the commands impossible to instantiate if something is missing:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">EmployNewPersonCommand</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="nv">$firstName</span><span class="p">;</span>
+    <span class="k">private</span> <span class="nv">$lastName</span><span class="p">;</span>
+    <span class="k">private</span> <span class="nv">$emailAddress</span><span class="p">;</span>
+    <span class="k">private</span> <span class="nv">$phoneNumber</span><span class="p">;</span>
+    <span class="k">private</span> <span class="nv">$position</span><span class="p">;</span>
+    <span class="k">private</span> <span class="nv">$salary</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span>
+        <span class="kt">string</span> <span class="nv">$firstName</span><span class="p">,</span>
+        <span class="kt">string</span> <span class="nv">$lastName</span><span class="p">,</span>
+        <span class="kt">string</span> <span class="nv">$emailAddress</span><span class="p">,</span>
+        <span class="kt">string</span> <span class="nv">$phoneNumber</span><span class="p">,</span> 
+        <span class="kt">string</span> <span class="nv">$position</span><span class="p">,</span> 
+        <span class="kt">float</span> <span class="nv">$salary</span>
+    <span class="p">)</span> <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">firstName</span> <span class="o">=</span> <span class="nv">$firstName</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">lastName</span> <span class="o">=</span> <span class="nv">$lastName</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">emailAddress</span> <span class="o">=</span> <span class="nv">$emailAddress</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">phoneNumber</span> <span class="o">=</span> <span class="nv">$phoneNumber</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">position</span> <span class="o">=</span> <span class="nv">$position</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">salary</span> <span class="o">=</span> <span class="nv">$salary</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getFirstName</span><span class="p">()</span> <span class="p">:</span> <span class="kt">string</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">firstName</span><span class="p">;</span>
+    <span class="p">}</span>
+    
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getLastName</span><span class="p">()</span> <span class="p">:</span> <span class="kt">string</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">lastName</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="c1">// other getters</span>
+<span class="p">}</span></code></pre></figure>
+
+<h1 id="using-value-objects-for-cleaner-command-arguments">Using value objects for cleaner command arguments</h1>
+
+<p>You probably notice another problem in our command’s current design – it became bloated with long list of properties and getter methods.</p>
+
+<p>We should also validate the information inside all of those properties, so our command can become even bigger and more messy.</p>
+
+<p>To make our command simpler, we can create multiple value objects in which we can group and organize the values, and use them as arguments for our command.</p>
+
+<p>For example, we can group the first and last name in a <code class="language-plaintext highlighter-rouge">PersonalDetails</code> value object. The email address and phone number would get a separate <code class="language-plaintext highlighter-rouge">EmailAddress</code> and <code class="language-plaintext highlighter-rouge">PhoneNumber</code> value objects. For the position and the salary we can create the <code class="language-plaintext highlighter-rouge">Employment</code> class. Note that this is just an example of how the information can be organized and you should think of your domain logic when creating the classes.</p>
+
+<p>Each of the value object can be validated independently, which gives us even better separation.</p>
+
+<p>With this reorganization, our command now expects three defined arguments:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">EmployPersonCommand</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="nv">$personalDetails</span><span class="p">;</span>
+    <span class="k">private</span> <span class="nv">$contacts</span><span class="p">;</span>
+    <span class="k">private</span> <span class="nv">$employment</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">PersonalDetails</span> <span class="nv">$personalDetails</span><span class="p">,</span> <span class="kt">array</span> <span class="nv">$contacts</span><span class="p">,</span> <span class="kt">Employment</span> <span class="nv">$employment</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">personalDetails</span> <span class="o">=</span> <span class="nv">$personalDetails</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">contacts</span> <span class="o">=</span> <span class="nv">$contacts</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">employment</span> <span class="o">=</span> <span class="nv">$employment</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getPersonalDetails</span><span class="p">()</span> <span class="p">:</span> <span class="kt">PersonalDetails</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">personalDetails</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getContacts</span><span class="p">()</span> <span class="p">:</span> <span class="kt">array</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">contacts</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getEmployment</span><span class="p">()</span> <span class="p">:</span> <span class="kt">Employment</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">employment</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>To create a new instance, firstly we need to prepare the value objects and then give them to the command:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nv">$personalDetails</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">PersonalDetails</span><span class="p">(</span>
+    <span class="nv">$request</span><span class="o">-&gt;</span><span class="nf">get</span><span class="p">(</span><span class="s1">'firstName'</span><span class="p">),</span> 
+    <span class="nv">$request</span><span class="o">-&gt;</span><span class="nf">get</span><span class="p">(</span><span class="s1">'lastName'</span><span class="p">)</span>
+<span class="p">);</span>
+
+<span class="nv">$email</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">EmailAddress</span><span class="p">(</span><span class="nv">$request</span><span class="o">-&gt;</span><span class="nf">get</span><span class="p">(</span><span class="s1">'email'</span><span class="p">));</span>
+<span class="nv">$phoneNumber</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">PhoneNumber</span><span class="p">(</span><span class="nv">$request</span><span class="o">-&gt;</span><span class="nf">get</span><span class="p">(</span><span class="s1">'phoneNumber'</span><span class="p">));</span>
+
+<span class="nv">$employment</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Employment</span><span class="p">(</span>
+    <span class="nv">$request</span><span class="o">-&gt;</span><span class="nf">get</span><span class="p">(</span><span class="s1">'position'</span><span class="p">),</span> 
+    <span class="nv">$request</span><span class="o">-&gt;</span><span class="nf">get</span><span class="p">(</span><span class="s1">'salary'</span><span class="p">)</span>
+<span class="p">);</span>
+        
+<span class="nv">$command</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">EmployPersonCommand</span><span class="p">(</span>
+    <span class="nv">$personalDetails</span><span class="p">,</span> 
+    <span class="p">[</span><span class="nv">$email</span><span class="p">,</span> <span class="nv">$phoneNumber</span><span class="p">],</span> 
+    <span class="nv">$employment</span>
+<span class="p">);</span></code></pre></figure>
+
+<p>We can reuse the same value objects in multiple places in our application, for example to make the entities or form types cleaner as well.</p>
+
+<h1 id="using-multiple-commands-instead-of-just-one">Using multiple commands instead of just one</h1>
+
+<p>If the domain logic we’re working on allows us, we can improve the command to have less responsibilities and to cause less implications by separating it into multiple smaller commands.</p>
+
+<p>Currently, our command receives multiple types of information about our new employee – their personal details, contact details and details about the new employment.</p>
+
+<p>If we need a possibility to add more contact details to an existing employee in future, we would create a new command for that purpose, possibly causing us to duplicate some existing code. If our domain logic allows for an employee to exist without providing us contact details, we can extract this into separate command which we can later use in another use case.</p>
+
+<p>We may even be able to firstly store the person’s personal details before we employ them, allowing us to store details about persons related to us in a different ways (eg. interns).</p>
+
+<p>So, instead of taking all this action by calling a single command, we can have the following three commands, which we can call from multiple places and in multiple cases:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">CreatePersonCommand</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">EmployPersonCommand</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">AddContactDetailsForEmployee</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span></code></pre></figure>
+
+<p>And to call them one by one:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="k">public</span> <span class="k">function</span> <span class="n">employAction</span><span class="p">(</span><span class="kt">Request</span> <span class="nv">$request</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="c1">// ...</span>
+
+    <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">handle</span><span class="p">(</span><span class="k">new</span> <span class="nc">CreatePersonCommand</span><span class="p">(</span><span class="mf">...</span><span class="p">));</span>
+    <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">handle</span><span class="p">(</span><span class="k">new</span> <span class="nc">EmployPersonCommand</span><span class="p">(</span><span class="mf">...</span><span class="p">));</span>
+    <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">handle</span><span class="p">(</span><span class="k">new</span> <span class="nc">AddContactDetailsForEmployee</span><span class="p">(</span><span class="mf">...</span><span class="p">));</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Note that, since the commands are not supposed to be returning anything, in order to know the identity of the created person who we want to employ, we should generate their ID before the commands are called. Another thing we need to be careful is that these commands should be called synchronically, because we must be sure that the person we want to employ already exists in our application.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="k">public</span> <span class="k">function</span> <span class="n">employAction</span><span class="p">(</span><span class="kt">Request</span> <span class="nv">$request</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="c1">// ...</span>
+
+    <span class="nv">$id</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">uuids</span><span class="o">-&gt;</span><span class="nf">generate</span><span class="p">();</span>
+
+    <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">handle</span><span class="p">(</span><span class="k">new</span> <span class="nc">CreatePersonCommand</span><span class="p">(</span><span class="nv">$id</span><span class="p">,</span> <span class="mf">...</span><span class="p">));</span>
+    <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">handle</span><span class="p">(</span><span class="k">new</span> <span class="nc">EmployPersonCommand</span><span class="p">(</span><span class="nv">$id</span><span class="p">,</span> <span class="mf">...</span><span class="p">));</span>
+    <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">handle</span><span class="p">(</span><span class="k">new</span> <span class="nc">AddContactDetailsForEmployee</span><span class="p">(</span><span class="nv">$id</span><span class="p">,</span> <span class="mf">...</span><span class="p">));</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>As you’ve read here in this article there are some ways to improve our commands’ design. You should always be aware of the requirements of the domain of your application before taking such decisions.</p>
+
+<p>In general, always try to make your commands concise, simpler and reusable.</p>
+
+<div class="alert alert-info">
+	<strong>Note:</strong> This article was originally published on my employer's web site. You can also read it <a href="http://gsix.me/post/creating-cleaner-simpler-commands/">here</a>. Any republishing of the article as a whole or in parts should be done in compliance with that site's content licensing.
+</div>
+
+  </article>
+
+</div>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <p class="text"><small>
+        Unless otherwise stated, the content of this blog is licensed under a <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+        </small></p>
+
+      <p class="text" style="float: left;">
+        <small>Built with <a href="http://jekyllrb.com" target="_blank">Jekyll</a></small>
+      </p>
+
+      <p class="text" style="text-align: right;">
+        <small>Subscribe via <a href="/feed.xml">RSS</a></small>
+      </p>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

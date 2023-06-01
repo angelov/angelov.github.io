@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width initial-scale=1">
+
+  <title>PHP 8 Attributes example: Injecting the current user in Symfony controllers without the security component</title>
+  <meta name="description" content="Although we’ve been using annotations in PHP for years, this functionality was not part of the language itself. Instead, we had to rely on parsing the commen...">
+
+	
+  		<meta content="article" property="og:type">
+	
+	<meta property="og:title" content="PHP 8 Attributes example: Injecting the current user in Symfony controllers without the security component" />
+	<meta property="og:description" content="Although we’ve been using annotations in PHP for years, this functionality was not part of the language itself. Instead, we had to rely on parsing the commen..." />
+	
+  		<meta content="http://angelovdejan.me/2020/05/17/php-8-attributes-example.html" property="og:url">
+	
+	<meta property="og:site_name" content="Dejan Angelov" />
+	<meta property="og:image" content="http://angelovdejan.me/images/pmappflow.png" />
+	<meta name="twitter:site" content="@angelovdejan" />
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://angelovdejan.me/2020/05/17/php-8-attributes-example.html">
+  <link rel="alternate" type="application/atom+xml" title="Dejan Angelov" href="http://angelovdejan.me/feed.xml" />
+  <link rel="me" href="https://phpc.social/@angelov">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Dejan Angelov</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+          <a class="page-link" href="/">Blog</a>
+        
+          
+          <a class="page-link" href="/about/">About Me</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">PHP 8 Attributes example: Injecting the current user in Symfony controllers without the security component</h1>
+    <p class="post-meta">May 17, 2020 • Dejan Angelov</p>
+  </header>
+
+  <article class="post-content">
+    <p>Although we’ve been using annotations in PHP for years, this functionality was not part of the language itself. Instead, 
+we had to rely on parsing the comments formatted as docblocks above the classes, properties or methods, usually with the 
+<code class="language-plaintext highlighter-rouge">doctrine/annotations</code> library. With the acceptance of the <a href="https://wiki.php.net/rfc/attributes_v2">“Attributes v2” RFC</a> 
+for the next major PHP version, the concept will become part of the PHP core, called “Attributes” and with slightly 
+different syntax: <code class="language-plaintext highlighter-rouge">&lt;&lt;Example&gt;&gt;</code> instead of <code class="language-plaintext highlighter-rouge">@Example</code>. In this article we’ll see how we can use a custom attribute to 
+tell Symfony how to resolve the currently authenticated user as controller action argument even if we don’t use the 
+security component.</p>
+
+<div class="alert alert-warning">
+    <small>
+	    <strong>Note:</strong> Even though the RFC has been accepted, please consider that at the moment of publishing 
+	    of this article the functionality is still under development and is not yet merged to the master branch. If you 
+	    want to try the code presented here now, you will have to compile the PHP source by yourself using the branch 
+	    from <a href="https://github.com/php/php-src/pull/5394" target="_blank">this PR</a>.
+	</small>
+</div>
+
+<h3 id="the-story">The story</h3>
+
+<p>Let’s imagine that we’re developing a project that, among others, includes two bounded contexts called 
+<strong>“Project Management”</strong> and <strong>“Authentication”</strong>, working as separate applications. Our focus in this article will be 
+on the “Project Management” one that we’re developing as a Symfony application.</p>
+
+<p>As actors in the application we have managers and developers, represented with the <code class="language-plaintext highlighter-rouge">Manager</code> and <code class="language-plaintext highlighter-rouge">Developer</code> entities 
+respectively (both implementing the <code class="language-plaintext highlighter-rouge">EmployeeInterface</code> interface). The managers will be able to create and assign tasks 
+(<code class="language-plaintext highlighter-rouge">Task</code> entity) to developers and the developers can mark those tasks as completed. To do their job, both managers and 
+developers are able to authenticate in the system.</p>
+
+<p>The application provides a HTTP API, used by the front-end web interface. To authenticate the employees when we receive 
+a request, we’re passing the <code class="language-plaintext highlighter-rouge">Authorization</code> header value to the other “Authentication” application, which then gives us 
+the UUID of the authenticated user. We have those UUIDs assigned the managers and developers in our application, and we 
+can know which manager or developer has sent the request.</p>
+
+<p>As example, here’s the flow for creating a new task:</p>
+
+<p><img src="/images/pmappflow.png" alt="Example" /></p>
+
+<h3 id="resolving-the-authenticated-developermanager">Resolving the authenticated developer/manager</h3>
+
+<p>For assigning the tasks, we have the <code class="language-plaintext highlighter-rouge">assignTask</code> controller action in the <code class="language-plaintext highlighter-rouge">TasksController</code>, which is mapped to the 
+<code class="language-plaintext highlighter-rouge">POST /tasks/{task}/assign/{developer}</code> API endpoint.</p>
+
+<p>In order to perform the task assignment, we need to fetch the task, the developer to which the task will be assigned 
+and the manager who will do the assignment.</p>
+
+<p>For simplicity, we’ll imagine that we use  <em>Doctrine ORM</em> and <em>SensioFrameworkExtraBundle</em>, so Symfony will 
+automatically know how to inject the proper task and developer objects in the action, based on the URL. If we don’t want 
+to use that bundle, we can use similar approach as the one discussed later in this article to fetch those objects as 
+well. You may even not need those objects here and just use the IDs.</p>
+
+<p>Here is the general structure of the controller and the action:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">TasksController</span>
+<span class="p">{</span>
+    <span class="cd">/** @Route("/tasks/{task}/assign/{developer}", methods={"POST"}) */</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">assignTask</span><span class="p">(</span>
+        <span class="kt">Request</span> <span class="nv">$request</span><span class="p">,</span>
+        <span class="kt">Task</span> <span class="nv">$task</span><span class="p">,</span>
+        <span class="kt">Developer</span> <span class="nv">$developer</span>
+    <span class="p">):</span> <span class="kt">Response</span> <span class="p">{</span>
+        <span class="c1">// ...</span>
+
+        <span class="k">return</span> <span class="k">new</span> <span class="nc">JsonResponse</span><span class="p">(</span><span class="cd">/** ... */</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>The only thing that we miss now is the manager who does the assignment. So, we need to transform the received token from 
+the request to the proper <code class="language-plaintext highlighter-rouge">Manager</code> object from the storage. To achieve that, we’ll have the following abstraction:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">interface</span> <span class="nc">AuthenticatedEmployeeResolverInterface</span>
+<span class="p">{</span>
+    <span class="cd">/** @throws InvalidTokenException */</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">fromToken</span><span class="p">(</span><span class="kt">string</span> <span class="nv">$token</span><span class="p">):</span> <span class="kt">EmployeeInterface</span><span class="p">;</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>If the token is invalid, it will throw an <code class="language-plaintext highlighter-rouge">InvalidTokenException</code> exception.</p>
+
+<p>As the “Authentication” application will give us only the id of the employee, we’ll also have an 
+<code class="language-plaintext highlighter-rouge">EmployeesRepositoryInterface</code> abstraction that will know how to fetch the proper manager or developer from the storage.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">interface</span> <span class="nc">EmployeesRepositoryInterface</span>
+<span class="p">{</span>
+    <span class="cd">/** @throws EmployeeNotFoundException */</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">fetchById</span><span class="p">(</span><span class="kt">string</span> <span class="nv">$id</span><span class="p">):</span> <span class="kt">EmployeeInterface</span><span class="p">;</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>So, in the authenticated employee resolver, first we’ll use a PSR-18 HTTP client in order to exchange the token for the 
+UUID of the user by communicating to the API of the “Authentication” application, and then we’ll fetch the employee from 
+the storage.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">AuthenticatedEmployeeResolver</span> <span class="kd">implements</span> <span class="nc">AuthenticatedEmployeeResolverInterface</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="kt">ClientInterface</span> <span class="nv">$httpClient</span><span class="p">;</span>
+    <span class="k">private</span> <span class="kt">EmployeesRepositoryInterface</span> <span class="nv">$employeesRepository</span><span class="p">;</span>
+
+    <span class="c1">// constructor omitted</span>
+
+    <span class="cd">/** @throws InvalidTokenException */</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">fromToken</span><span class="p">(</span><span class="kt">string</span> <span class="nv">$token</span><span class="p">):</span> <span class="kt">EmployeeInterface</span>
+    <span class="p">{</span>
+        <span class="k">try</span> <span class="p">{</span>
+            <span class="nv">$uuid</span> <span class="o">=</span> <span class="c1">// send the request and parse the response</span>
+
+            <span class="nv">$employee</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">employeesRepository</span><span class="o">-&gt;</span><span class="nf">findById</span><span class="p">(</span><span class="nv">$uuid</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nc">ClientExceptionInterface</span> <span class="o">|</span> <span class="nc">EmployeeNotFoundException</span> <span class="nv">$exception</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nc">InvalidTokenException</span><span class="p">();</span>
+        <span class="p">}</span>
+        
+        <span class="k">return</span> <span class="nv">$employee</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Now, let’s first see the approach with injecting the <code class="language-plaintext highlighter-rouge">AuthenticatedEmployeeResolverInterface</code> service as constructor 
+argument in the controller, and explicitly using it to fetch the currently authenticated manager when assigning the 
+task.</p>
+
+<p>In the <code class="language-plaintext highlighter-rouge">assignTask</code> method, we’ll retrieve the token from the request and then try to resolve the authenticated employee 
+using it. Additionally, we’ll also check if the employee is actually a manager inside our bounded context.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">TasksController</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="kt">AuthenticatedEmployeeResolverInterface</span> <span class="nv">$employeeResolver</span><span class="p">;</span>
+
+    <span class="c1">// constructor omitted </span>
+
+    <span class="cd">/** @Route("/tasks/{task}/assign/{developer}", methods={"POST"}) */</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">assignTask</span><span class="p">(</span>
+        <span class="kt">Request</span> <span class="nv">$request</span><span class="p">,</span>
+        <span class="kt">Task</span> <span class="nv">$task</span><span class="p">,</span>
+        <span class="kt">Developer</span> <span class="nv">$developer</span>
+    <span class="p">):</span> <span class="kt">Response</span> <span class="p">{</span>
+        <span class="nv">$token</span> <span class="o">=</span> <span class="nb">str_replace</span><span class="p">(</span>
+            <span class="s1">'Bearer '</span><span class="p">,</span>
+            <span class="s1">''</span><span class="p">,</span>
+            <span class="nv">$request</span><span class="o">-&gt;</span><span class="n">headers</span><span class="o">-&gt;</span><span class="nf">get</span><span class="p">(</span><span class="s1">'Authorization'</span><span class="p">,</span> <span class="s1">''</span><span class="p">)</span>
+        <span class="p">);</span>
+
+        <span class="k">try</span> <span class="p">{</span>
+            <span class="nv">$employee</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">employeeResolver</span><span class="o">-&gt;</span><span class="nf">fromToken</span><span class="p">(</span><span class="nv">$token</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nc">InvalidTokenException</span> <span class="nv">$exception</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">createUnauthorizedResponse</span><span class="p">();</span>
+        <span class="p">}</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="nv">$employee</span> <span class="k">instanceof</span> <span class="nc">Manager</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">createUnauthorizedResponse</span><span class="p">();</span>
+        <span class="p">}</span>
+
+        <span class="c1">// ... do the assignment by sending a command or something similar</span>
+
+        <span class="k">return</span> <span class="k">new</span> <span class="nc">JsonResponse</span><span class="p">(</span><span class="cd">/** ... */</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">function</span> <span class="n">createUnauthorizedResponse</span><span class="p">():</span> <span class="kt">Response</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="nc">JsonResponse</span><span class="p">(</span><span class="s1">'Unauthorized'</span><span class="p">,</span> <span class="nc">Response</span><span class="o">::</span><span class="no">HTTP_UNAUTHORIZED</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>With this, we’ve managed to fetch the proper manager and now we can use it to do the task assignment. However, this 
+bloats our controllers, as we need to inject the <code class="language-plaintext highlighter-rouge">AuthenticatedEmployeeResolverInterface</code> abstraction and parse the 
+token in all controllers in which we need the authenticated employee.</p>
+
+<p>Luckily, Symfony provides a mechanism called <a href="https://symfony.com/doc/current/controller/argument_value_resolver.html"><strong>“Action Argument Resolving”</strong></a> 
+which will help us replace the whole authentication related code from the controllers with a single PHP attribute.</p>
+
+<p>As we can see in the Symfony documentation, there’s an existing <code class="language-plaintext highlighter-rouge">UserValueResolver</code> resolver, but using it will require 
+us to install the whole Symfony Security component and make our <code class="language-plaintext highlighter-rouge">Manager</code> and <code class="language-plaintext highlighter-rouge">Developer</code> entities implement the 
+component’s <code class="language-plaintext highlighter-rouge">UserInterface</code> which is too much for our case.</p>
+
+<p>So, we need to extend the argument resolving mechanism by creating a new argument value resolver which will implement
+the <code class="language-plaintext highlighter-rouge">Symfony\Component\HttpKernel\Controller\ArgumentValueResolverInterface</code> interface.</p>
+
+<p>Even though both types of employees implement the <code class="language-plaintext highlighter-rouge">EmployeeInterface</code> we can’t just make it resolve any argument 
+implementing this interface, or each of the entity classes separately, because as we saw, we can have controller action 
+methods that require multiple such objects, of which only one is the authenticated and the others should be fetched from 
+the storage. That’s why we need to mark the authenticated one with an attribute.</p>
+
+<p>Our final result will look like this:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">TasksController</span>
+<span class="p">{</span>
+    <span class="cd">/** @Route("/tasks/{task}/assign/{developer}", methods={"POST"}) */</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">assignTask</span><span class="p">(</span>
+        <span class="o">&lt;&lt;</span><span class="nc">Authenticated</span><span class="o">&gt;&gt;</span> <span class="nc">Manager</span> <span class="nv">$manager</span><span class="p">,</span>
+        <span class="nc">Task</span> <span class="nv">$task</span><span class="p">,</span>
+        <span class="nc">Developer</span> <span class="nv">$developer</span>
+    <span class="p">)</span><span class="o">:</span> <span class="nc">Response</span> <span class="p">{</span>
+
+        <span class="c1">// ... send a command to the command bus or something similar</span>
+
+        <span class="k">return</span> <span class="k">new</span> <span class="nc">JsonResponse</span><span class="p">(</span><span class="cd">/** ... */</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>So, we’ll create a custom PHP attribute called <code class="language-plaintext highlighter-rouge">Authenticated</code>. To do that, as defined in the RFC, we need to create a 
+class with that name and add a <code class="language-plaintext highlighter-rouge">PhpAttribute</code> attribute on it. Note that the PHP’s <code class="language-plaintext highlighter-rouge">PhpAttribute</code> class is in the global 
+space, so you will probably have to import it or use it as <code class="language-plaintext highlighter-rouge">\PhpAttribute</code>.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nt">&lt;</span><span class="err">&lt;</span><span class="na">PhpAttribute</span><span class="nt">&gt;</span>&gt;
+class Authenticated
+{
+}</code></pre></figure>
+
+<p>As defined in the interface, the argument value resolver will have two methods. One (<code class="language-plaintext highlighter-rouge">supports</code>) that receives the 
+request and an attribute metadata and tells Symfony whether this resolver should be used for the specific attribute. 
+When doing the resolving, Symfony goes through all the registered resolvers for each of the controller action attributes 
+and by calling this methods checks which resolvers should it use. The other one (<code class="language-plaintext highlighter-rouge">resolve</code>) is the one that will 
+actually provide the proper value that should be passed to the controller action method.</p>
+
+<p>Let’s see each of the two methods separately.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">AuthenticatedEmployeeArgumentValueResolver</span> <span class="kd">implements</span> <span class="nc">ArgumentValueResolverInterface</span>
+<span class="p">{</span>
+    <span class="c1">// constructor and properties omitted, but will be needed later</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">supports</span><span class="p">(</span><span class="kt">Request</span> <span class="nv">$request</span><span class="p">,</span> <span class="kt">ArgumentMetadata</span> <span class="nv">$argument</span><span class="p">):</span> <span class="kt">bool</span>
+    <span class="p">{</span>
+        <span class="nv">$controller</span> <span class="o">=</span> <span class="nv">$request</span><span class="o">-&gt;</span><span class="n">attributes</span><span class="o">-&gt;</span><span class="nf">get</span><span class="p">(</span><span class="s1">'_controller'</span><span class="p">);</span>
+        <span class="p">[</span><span class="nv">$className</span><span class="p">,</span> <span class="nv">$methodName</span><span class="p">]</span> <span class="o">=</span> <span class="nb">explode</span><span class="p">(</span><span class="s2">"::"</span><span class="p">,</span> <span class="nv">$controller</span><span class="p">);</span>
+
+        <span class="nv">$parameter</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ReflectionParameter</span><span class="p">(</span>
+            <span class="p">[</span><span class="nv">$className</span><span class="p">,</span> <span class="nv">$methodName</span><span class="p">],</span>
+            <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">()</span>
+        <span class="p">);</span>
+
+        <span class="nv">$attributes</span> <span class="o">=</span> <span class="nv">$parameter</span><span class="o">-&gt;</span><span class="nf">getAttributes</span><span class="p">();</span>
+
+        <span class="k">return</span> <span class="nb">in_array</span><span class="p">(</span>
+            <span class="nc">Authenticated</span><span class="o">::</span><span class="n">class</span><span class="p">,</span>
+            <span class="nb">array_map</span><span class="p">(</span>
+                <span class="k">fn</span><span class="p">(</span><span class="kt">ReflectionAttribute</span> <span class="nv">$attribute</span><span class="p">):</span> <span class="kt">string</span> <span class="o">=&gt;</span> <span class="nv">$attribute</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">(),</span> 
+                <span class="nv">$attributes</span>
+            <span class="p">)</span>
+        <span class="p">);</span>
+    <span class="p">}</span>
+    
+    <span class="k">public</span> <span class="k">function</span> <span class="n">resolve</span><span class="p">(</span><span class="kt">Request</span> <span class="nv">$request</span><span class="p">,</span> <span class="kt">ArgumentMetadata</span> <span class="nv">$argument</span><span class="p">):</span> <span class="kt">iterable</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>The controller resolving happens before the argument resolving, so we can take that information from the request’s 
+attributes. With it, we can find out the needed controller class and action method. Note that the code above can be 
+slightly changed if we were using invokable controller classes as actions, but the main logic is still same. Having that 
+information, we can now use the reflection API to get more information about the method’s argument/property.</p>
+
+<p><a href="https://wiki.php.net/rfc/attributes_v2#reflection">As defined in the RFC</a>, the reflection classes that represent 
+classes, functions, properties and class constants now come with a new <code class="language-plaintext highlighter-rouge">getAttributes</code> method which returns an array of 
+<code class="language-plaintext highlighter-rouge">ReflectionAttribute</code> objects. We’ll use that method on our <code class="language-plaintext highlighter-rouge">ReflectionParameter</code> object that represents the current 
+argument to retrieve all attributes placed on it.</p>
+
+<p>Then we can use the <code class="language-plaintext highlighter-rouge">getName</code> method for each of the found attributes to find out their FQCNs and check if any of it 
+matches the custom attribute that we created.</p>
+
+<p>If our attribute is matched in the list of attributes for the argument, the next method from our value resolver is 
+called - the <code class="language-plaintext highlighter-rouge">resolve</code> one.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">AuthenticatedEmployeeArgumentValueResolver</span> <span class="kd">implements</span> <span class="nc">ArgumentValueResolverInterface</span>
+<span class="p">{</span>
+    <span class="k">private</span> <span class="kt">AuthenticatedEmployeeResolverInterface</span> <span class="nv">$employeeResolver</span><span class="p">;</span>
+
+    <span class="c1">// constructor omitted</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">supports</span><span class="p">(</span><span class="kt">Request</span> <span class="nv">$request</span><span class="p">,</span> <span class="kt">ArgumentMetadata</span> <span class="nv">$argument</span><span class="p">):</span> <span class="kt">bool</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">resolve</span><span class="p">(</span><span class="kt">Request</span> <span class="nv">$request</span><span class="p">,</span> <span class="kt">ArgumentMetadata</span> <span class="nv">$argument</span><span class="p">):</span> <span class="kt">iterable</span>
+    <span class="p">{</span>
+        <span class="nv">$token</span> <span class="o">=</span> <span class="nb">str_replace</span><span class="p">(</span>
+            <span class="s1">'Bearer '</span><span class="p">,</span>
+            <span class="s1">''</span><span class="p">,</span>
+            <span class="nv">$request</span><span class="o">-&gt;</span><span class="n">headers</span><span class="o">-&gt;</span><span class="nf">get</span><span class="p">(</span><span class="s1">'Authorization'</span><span class="p">,</span> <span class="s1">''</span><span class="p">)</span>
+        <span class="p">);</span>
+
+        <span class="k">try</span> <span class="p">{</span>
+            <span class="nv">$employee</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">employeeResolver</span><span class="o">-&gt;</span><span class="nf">fromToken</span><span class="p">(</span><span class="nv">$token</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nc">InvalidTokenException</span> <span class="nv">$exception</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nc">UnauthenticatedException</span><span class="p">();</span>
+        <span class="p">}</span>
+
+        <span class="nv">$argumentType</span> <span class="o">=</span> <span class="nv">$argument</span><span class="o">-&gt;</span><span class="nb">getType</span><span class="p">();</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="nv">$employee</span> <span class="k">instanceof</span> <span class="nv">$argumentType</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nc">UnauthorizedException</span><span class="p">();</span>
+        <span class="p">}</span>
+
+        <span class="k">yield</span> <span class="nv">$employee</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>We can see that the logic in the <code class="language-plaintext highlighter-rouge">resolve</code> method is almost identical to what we previously had in the controller. One 
+of the differences here is that we don’t just create a HTTP response in the invalid cases, but throw custom exceptions 
+instead. Later, we’ll tell Symfony how to convert those exceptions to proper HTTP responses.</p>
+
+<p>Another difference is that we don’t explicitly check if the employee is of a specific type. We do that in a more 
+flexible way, by getting the argument type from the argument metadata. That allows us to specify the employee type as a 
+type hint in the controller action, making all of the following cases supported:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">EmployeesController</span>
+<span class="p">{</span>
+    <span class="cd">/** @Route("/profile", methods={"GET"}) */</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">profile</span><span class="p">(</span>
+        <span class="o">&lt;&lt;</span><span class="nc">Authenticated</span><span class="o">&gt;&gt;</span> <span class="nc">EmployeeInterface</span> <span class="nv">$employee</span>
+    <span class="p">)</span><span class="o">:</span> <span class="nc">Response</span> <span class="p">{</span>
+        <span class="c1">// Any type of employee is allowed to access this route</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">class</span> <span class="nc">TasksController</span>
+<span class="p">{</span>
+    <span class="cd">/** @Route("/tasks/{task}/assign/{developer}", methods={"POST"}) */</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">assignTask</span><span class="p">(</span>
+       <span class="o">&lt;&lt;</span><span class="nc">Authenticated</span><span class="o">&gt;&gt;</span> <span class="nc">Manager</span> <span class="nv">$manager</span>
+        <span class="nc">Task</span> <span class="nv">$task</span><span class="p">,</span>
+        <span class="nc">Developer</span> <span class="nv">$developer</span>
+    <span class="p">)</span><span class="o">:</span> <span class="nc">Response</span> <span class="p">{</span>
+        <span class="c1">// This is allowed only for managers</span>
+    <span class="p">}</span>
+
+    <span class="cd">/** @Route("/tasks/{task}/complete", methods={"POST"}) */</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">completeTask</span><span class="p">(</span>
+           <span class="o">&lt;&lt;</span><span class="nc">Authenticated</span><span class="o">&gt;&gt;</span> <span class="nc">Developer</span> <span class="nv">$developer</span><span class="p">,</span>
+            <span class="nc">Task</span> <span class="nv">$task</span>
+        <span class="p">)</span><span class="o">:</span> <span class="nc">Response</span> <span class="p">{</span>
+        <span class="c1">// This is allowed only for developers</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>As a final step, we just have to let Symfony know how to transform the <code class="language-plaintext highlighter-rouge">UnauthenticatedException</code> and 
+<code class="language-plaintext highlighter-rouge">UnauthorizedException</code> exceptions to a HTTP response. Here’s just a simple example how this can be done:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">ExceptionsSubscriber</span> <span class="kd">implements</span> <span class="nc">EventSubscriberInterface</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">static</span> <span class="k">function</span> <span class="n">getSubscribedEvents</span><span class="p">():</span> <span class="kt">array</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="p">[</span><span class="nc">KernelEvents</span><span class="o">::</span><span class="no">EXCEPTION</span> <span class="o">=&gt;</span> <span class="s1">'handleException'</span><span class="p">];</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">handleException</span><span class="p">(</span><span class="kt">ExceptionEvent</span> <span class="nv">$event</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$statusCodes</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="nc">UnauthenticatedException</span><span class="o">::</span><span class="n">class</span> <span class="o">=&gt;</span> <span class="nc">Response</span><span class="o">::</span><span class="no">HTTP_UNAUTHORIZED</span><span class="p">,</span>
+            <span class="nc">UnauthorizedException</span><span class="o">::</span><span class="n">class</span> <span class="o">=&gt;</span> <span class="nc">Response</span><span class="o">::</span><span class="no">HTTP_FORBIDDEN</span>
+        <span class="p">];</span>
+
+        <span class="nv">$exceptionClass</span> <span class="o">=</span> <span class="nb">get_class</span><span class="p">(</span><span class="nv">$event</span><span class="o">-&gt;</span><span class="nf">getThrowable</span><span class="p">());</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="k">isset</span><span class="p">(</span><span class="nv">$statusCodes</span><span class="p">[</span><span class="nv">$exceptionClass</span><span class="p">]))</span> <span class="p">{</span>
+            <span class="k">return</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="nv">$event</span><span class="o">-&gt;</span><span class="nf">setResponse</span><span class="p">(</span>
+            <span class="k">new</span> <span class="nc">JsonResponse</span><span class="p">(</span><span class="cm">/* ... */</span><span class="p">,</span> <span class="nv">$statusCodes</span><span class="p">[</span><span class="nv">$exceptionClass</span><span class="p">])</span>
+        <span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<h3 id="conclusion">Conclusion</h3>
+
+<p>Annotations are widely used in other popular languages (such as Java) and having them now in the PHP core (as attributes) 
+opens many new possibilities. As previously noted, the feature is accepted for PHP 8 and although it is working for the 
+cases discussed here, it is still under development. The releasing of PHP 8 is currently scheduled for December 2020, 
+more than half a year from now, a long period in which many things may happen or change. However, I believe that the 
+general ideas discussed here will remain applicable.</p>
+
+<p>Also, since PHP 8 is still in development, many of the libraries (including Doctrine) may not work with it at this 
+moment, so making all the code presented here work requires switching between versions and doing some improvisations. 
+Please do not focus too much on the details, as the important thing here is to understand the general idea.</p>
+
+  </article>
+
+</div>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <p class="text"><small>
+        Unless otherwise stated, the content of this blog is licensed under a <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+        </small></p>
+
+      <p class="text" style="float: left;">
+        <small>Built with <a href="http://jekyllrb.com" target="_blank">Jekyll</a></small>
+      </p>
+
+      <p class="text" style="text-align: right;">
+        <small>Subscribe via <a href="/feed.xml">RSS</a></small>
+      </p>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

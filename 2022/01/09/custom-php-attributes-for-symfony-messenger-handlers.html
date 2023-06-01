@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width initial-scale=1">
+
+  <title>Using custom PHP attributes for registering and configuring Symfony Messenger handlers</title>
+  <meta name="description" content="Symfony Messenger provides multiple ways for registration and configuration of message handlers. Nowadays, the handlers are usually registered by implementin...">
+
+	
+  		<meta content="article" property="og:type">
+	
+	<meta property="og:title" content="Using custom PHP attributes for registering and configuring Symfony Messenger handlers" />
+	<meta property="og:description" content="Symfony Messenger provides multiple ways for registration and configuration of message handlers. Nowadays, the handlers are usually registered by implementin..." />
+	
+  		<meta content="http://angelovdejan.me/2022/01/09/custom-php-attributes-for-symfony-messenger-handlers.html" property="og:url">
+	
+	<meta property="og:site_name" content="Dejan Angelov" />
+	<meta property="og:image" content="http://angelovdejan.me/images/boxes.jpg" />
+	<meta name="twitter:site" content="@angelovdejan" />
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://angelovdejan.me/2022/01/09/custom-php-attributes-for-symfony-messenger-handlers.html">
+  <link rel="alternate" type="application/atom+xml" title="Dejan Angelov" href="http://angelovdejan.me/feed.xml" />
+  <link rel="me" href="https://phpc.social/@angelov">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Dejan Angelov</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+          <a class="page-link" href="/">Blog</a>
+        
+          
+          <a class="page-link" href="/about/">About Me</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">Using custom PHP attributes for registering and configuring Symfony Messenger handlers</h1>
+    <p class="post-meta">Jan 9, 2022 • Dejan Angelov</p>
+  </header>
+
+  <article class="post-content">
+    <p>Symfony Messenger provides multiple ways for registration and configuration of message handlers. Nowadays, the handlers 
+are usually registered by implementing the component’s <code class="language-plaintext highlighter-rouge">MessageHandlerInterface</code> interface, which makes the handlers 
+auto-configurable by default, or by implementing some interface of ours which we can register for autoconfiguration 
+manually. However, with the addition of the attributes functionality in PHP 8.0, it doesn’t really make sense anymore to 
+use interfaces for the purpose of “describing” our classes. In this article we’ll explore how we can use our own PHP 
+attributes to register and configure the message handlers.</p>
+
+<p>The attributes are more suitable for this purpose as, besides describing the classes, they can also serve as simple data 
+transfer objects that can hold any data we need to pass. Since 
+<a href="https://symfony.com/blog/new-in-symfony-5-4-messenger-improvements#configurable-handlers-with-php-attributes" target="_blank">Symfony 5.4</a>, 
+the Messenger component comes with an <code class="language-plaintext highlighter-rouge">#[AsMessageHandler]</code> attribute that serves as a replacement for the mentioned 
+interface, and is great for quickly registering any class as message handler. However, it has a limited set of 
+properties and can be declared only on classes.</p>
+
+<p>If we want to have more flexibility, we can create and use our own attributes. With them, we’ll have bigger control, and 
+we can decouple our classes from the framework. Also, with attributes that can be declared on methods, we can easily 
+define multiple handlers in a same class without the need of additional framework code into it, making it more focused 
+on our business logic.</p>
+
+<p>Let’s begin by saying that whenever a new member joins a community in our application, we’re dispatching an 
+<code class="language-plaintext highlighter-rouge">MemberJoinedEvent</code> event:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">MemberJoinedEvent</span>
+<span class="p">{</span>
+    <span class="c1">// ...</span>
+<span class="p">}</span></code></pre></figure>
+
+<p><em><small>(I’ll be omitting the namespaces here for simplicity. You can organize the code and place the classes 
+according to your needs.)</small></em></p>
+
+<p>The event is being handled by two listeners for taking the following actions:</p>
+<ul>
+  <li>Start their trial period</li>
+  <li>Send them a welcome e-mail</li>
+</ul>
+
+<p>And we have the following message bus through which we’re dispatching all the events:</p>
+
+<figure class="highlight"><pre><code class="language-yaml" data-lang="yaml"><span class="na">framework</span><span class="pi">:</span>
+    <span class="na">messenger</span><span class="pi">:</span>
+        <span class="na">buses</span><span class="pi">:</span>
+            <span class="na">event_bus</span><span class="pi">:</span> <span class="s">...</span></code></pre></figure>
+
+<p>Now we need to register our events’ listeners as services in the Symfony’s container, and tag them as message handlers, 
+so they can be reached by the dispatched events.</p>
+
+<h3 id="registering-the-handlers-for-autoconfiguration">Registering the handlers for autoconfiguration</h3>
+
+<p>As mentioned above, we’ll create a new attribute with which we’ll mark the listeners as handlers. 
+For now, we can specify the classes as the only target of the attribute. Later in the article we’ll see how we can use 
+the attribute for methods as well.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[Attribute(Attribute::TARGET_CLASS)]</span>
+<span class="kd">class</span> <span class="nc">Listener</span>
+<span class="p">{</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Next, we’ll declare the attribute on the listener classes:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[Listener]</span>
+<span class="k">final</span> <span class="kd">class</span> <span class="nc">StartTrialPeriod</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__invoke</span><span class="p">(</span><span class="kt">MemberJoinedEvent</span> <span class="nv">$event</span><span class="p">):</span> <span class="kt">void</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[Listener]</span>
+<span class="k">final</span> <span class="kd">class</span> <span class="nc">SendWelcomeEmail</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__invoke</span><span class="p">(</span><span class="kt">MemberJoinedEvent</span> <span class="nv">$event</span><span class="p">):</span> <span class="kt">void</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>As a final step, we need to tell Messenger that these listener classes are message handlers by tagging each of them with 
+the <code class="language-plaintext highlighter-rouge">messenger.message_handler</code> tag.</p>
+
+<p>Similar to the functionality for autoconfiguring services that implement a given interface, since
+<a href="https://github.com/symfony/symfony/pull/39897" target="_blank">Symfony 5.3</a> there’s an option to register attributes 
+for autoconfiguration as well.</p>
+
+<p>For that purpose, there’s the <code class="language-plaintext highlighter-rouge">registerAttributeForAutoconfiguration</code> method in the <code class="language-plaintext highlighter-rouge">ContainerBuilder</code> class, which 
+we’ll use to register the attribute when building the container. As arguments to this method we’ll be passing the 
+classpath of the attribute we want to register, and a configurator - an anonymous function that will be executed for 
+each of the attribute’s declarations (i.e. for each of the listener classes).</p>
+
+<p>As we want our handlers to work on the <code class="language-plaintext highlighter-rouge">event_bus</code> message bus, we’ll also set the <code class="language-plaintext highlighter-rouge">bus</code> property on the 
+<code class="language-plaintext highlighter-rouge">messenger.message_handler</code> tag we’ll be adding to the listener classes.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">Kernel</span> <span class="kd">extends</span> <span class="nc">BaseKernel</span>
+<span class="p">{</span>
+    <span class="c1">// ...</span>
+
+    <span class="k">protected</span> <span class="k">function</span> <span class="n">build</span><span class="p">(</span><span class="kt">ContainerBuilder</span> <span class="nv">$container</span><span class="p">):</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="c1">// ...</span>
+
+        <span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">registerAttributeForAutoconfiguration</span><span class="p">(</span>
+            <span class="nc">Listener</span><span class="o">::</span><span class="n">class</span><span class="p">,</span>
+            <span class="k">static</span> <span class="k">function</span> <span class="p">(</span>
+                <span class="kt">ChildDefinition</span> <span class="nv">$definition</span><span class="p">,</span>
+                <span class="kt">Listener</span> <span class="nv">$attribute</span><span class="p">,</span>
+                <span class="kt">ReflectionClass</span> <span class="nv">$reflector</span>
+            <span class="p">):</span> <span class="kt">void</span> <span class="p">{</span>
+                <span class="nv">$definition</span><span class="o">-&gt;</span><span class="nf">addTag</span><span class="p">(</span><span class="s1">'messenger.message_handler'</span><span class="p">,</span> <span class="p">[</span>
+                    <span class="s1">'bus'</span> <span class="o">=&gt;</span> <span class="s1">'event_bus'</span>
+                <span class="p">]);</span>
+            <span class="p">}</span>
+        <span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>We can now use the <code class="language-plaintext highlighter-rouge">debug:messenger</code> console command to check the list of messages and handlers:</p>
+
+<figure class="highlight"><pre><code class="language-text" data-lang="text">MemberJoinedEvent
+    handled by SendWelcomeEmail
+    handled by StartTrialPeriod</code></pre></figure>
+
+<p>With the work we’ve done so far, whenever we declare the <code class="language-plaintext highlighter-rouge">#[Listener]</code> attribute on a class, the Messenger component
+will register that class as a message handler in the <code class="language-plaintext highlighter-rouge">event_bus</code> message bus. The new class will also be automatically
+configured to handle events of the class type-hinted as a first argument in its <code class="language-plaintext highlighter-rouge">__invoke</code> method.</p>
+
+<h3 id="changing-the-handler-method-name">Changing the handler method name</h3>
+
+<p>Next, let’s try to make it possible to use a different method name (eg. <code class="language-plaintext highlighter-rouge">handle</code>) for handling the events, instead of
+<code class="language-plaintext highlighter-rouge">__invoke</code>.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[Listener]</span>
+<span class="k">final</span> <span class="kd">class</span> <span class="nc">SendWelcomeEmail</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">handle</span><span class="p">(</span><span class="kt">MemberJoinedEvent</span> <span class="nv">$event</span><span class="p">):</span> <span class="kt">void</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>To specify which method should be called when the event is passed to the handler, we need to set the <code class="language-plaintext highlighter-rouge">method</code> property 
+when tagging the handler.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">registerAttributeForAutoconfiguration</span><span class="p">(</span>
+    <span class="nc">Listener</span><span class="o">::</span><span class="n">class</span><span class="p">,</span>
+    <span class="k">static</span> <span class="k">function</span> <span class="p">(</span>
+        <span class="p">...</span>
+    <span class="p">):</span> <span class="kt">void</span> <span class="p">{</span>
+        <span class="nv">$definition</span><span class="o">-&gt;</span><span class="nf">addTag</span><span class="p">(</span><span class="s1">'messenger.message_handler'</span><span class="p">,</span> <span class="p">[</span>
+            <span class="s1">'bus'</span> <span class="o">=&gt;</span> <span class="s1">'event_bus'</span><span class="p">,</span>
+            <span class="s1">'method'</span> <span class="o">=&gt;</span> <span class="s1">'handle'</span>
+        <span class="p">]);</span>
+    <span class="p">}</span>
+<span class="p">);</span></code></pre></figure>
+
+<p>However, if we try running this, we’ll get the following error:</p>
+
+<blockquote>
+  <p>Invalid handler service “SendWelcomeEmail”: class “SendWelcomeEmail” must have an “__invoke()” method.<br />
+<sup>500 Internal Server Error - RuntimeException</sup></p>
+</blockquote>
+
+<p>At the moment, Messenger will try to resolve the handled message type (in our case the event class) automatically only 
+when the method is not specified explicitly. As a result, in our case, we also need to manually specify the handled 
+event for each of the registered handlers, using the <code class="language-plaintext highlighter-rouge">handles</code> property of the tag.</p>
+
+<p>As we will have multiple events, we need to somehow pass the value to the configurator for each of the handlers we want 
+to configure.</p>
+
+<p>For that reason, we’ll add a new property in the attribute:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[Attribute(Attribute::TARGET_CLASS)]</span>
+<span class="kd">class</span> <span class="nc">Listener</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="k">public</span> <span class="k">readonly</span> <span class="kt">string</span> <span class="nv">$event</span><span class="p">)</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>And we’ll provide the value when declaring the attribute on the listener classes:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[Listener(event: MemberJoinedEvent::class)]</span>
+<span class="k">final</span> <span class="kd">class</span> <span class="nc">SendWelcomeEmail</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">handle</span><span class="p">(</span><span class="kt">MemberJoinedEvent</span> <span class="nv">$event</span><span class="p">):</span> <span class="kt">void</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Now, when registering the handlers, in the configurator we’ll read the <code class="language-plaintext highlighter-rouge">event</code> property of the attribute instance, and 
+we’ll use that value for the <code class="language-plaintext highlighter-rouge">handles</code> property of the tag:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">registerAttributeForAutoconfiguration</span><span class="p">(</span>
+    <span class="nc">Listener</span><span class="o">::</span><span class="n">class</span><span class="p">,</span>
+    <span class="k">static</span> <span class="k">function</span> <span class="p">(</span>
+        <span class="kt">ChildDefinition</span> <span class="nv">$definition</span><span class="p">,</span>
+        <span class="kt">Listener</span> <span class="nv">$attribute</span><span class="p">,</span>
+        <span class="kt">ReflectionClass</span> <span class="nv">$reflector</span>
+    <span class="p">):</span> <span class="kt">void</span> <span class="p">{</span>
+        <span class="nv">$definition</span><span class="o">-&gt;</span><span class="nf">addTag</span><span class="p">(</span><span class="s1">'messenger.message_handler'</span><span class="p">,</span> <span class="p">[</span>
+            <span class="s1">'bus'</span> <span class="o">=&gt;</span> <span class="s1">'event_bus'</span><span class="p">,</span>
+            <span class="s1">'method'</span> <span class="o">=&gt;</span> <span class="s1">'handle'</span><span class="p">,</span>
+            <span class="s1">'handles'</span> <span class="o">=&gt;</span> <span class="nv">$attribute</span><span class="o">-&gt;</span><span class="n">event</span>
+        <span class="p">]);</span>
+    <span class="p">}</span>
+<span class="p">);</span></code></pre></figure>
+
+<p>If we check the list of messages and handlers now, we’ll see that the listeners will handle the events with the new 
+method name:</p>
+
+<figure class="highlight"><pre><code class="language-text" data-lang="text">MemberJoinedEvent
+    handled by SendWelcomeEmail (when method=handle)
+    handled by StartTrialPeriod (when method=handle)</code></pre></figure>
+
+<h3 id="handling-multiple-messages-events-in-the-same-class">Handling multiple messages (events) in the same class</h3>
+
+<p>Now that we’re able to use a different method names for the handlers, we can make it more dynamic and also make it 
+possible for us to have multiple methods in the same class that will handle different events. By using the attribute, 
+we’re able to achieve this without implementing any additional interfaces or adding additional methods to our classes.</p>
+
+<p>Let’s say that we have another similar <code class="language-plaintext highlighter-rouge">MemberLeftEvent</code> event, and we want to have some service that will keep track of 
+the number of members in a community. In this case, it makes sense to have a class that will contain the listeners for 
+both of the events, which will adjust the number respectively.</p>
+
+<p>As we want the listeners in this case to be represented by the methods, we need to declare the <code class="language-plaintext highlighter-rouge">#[Listener]</code> attribute 
+to each of them. First, we’ll make it possible for the attribute to be declared on methods too:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]</span>
+<span class="kd">class</span> <span class="nc">Listener</span>
+<span class="p">{</span>
+    <span class="mf">...</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Next we’ll declare the attributes on each of the methods we want to handle an event:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="k">final</span> <span class="kd">class</span> <span class="nc">CountMembers</span>
+<span class="p">{</span>
+    <span class="na">#[Listener(event: MemberJoinedEvent::class)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">increaseNumber</span><span class="p">(</span><span class="kt">MemberJoinedEvent</span> <span class="nv">$event</span><span class="p">):</span> <span class="kt">void</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+
+    <span class="na">#[Listener(event: MemberLeftEvent::class)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">decreaseNumber</span><span class="p">(</span><span class="kt">MemberLeftEvent</span> <span class="nv">$event</span><span class="p">):</span> <span class="kt">void</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>The third argument in the configurator anonymous function was added in
+<a href="https://symfony.com/blog/new-in-symfony-5-4-dependencyinjection-improvements#autoconfigurable-methods-properties-and-parameters" target="_blank">Symfony 5.4</a>, 
+and provides us some reflection info about the place (class, method, property, etc.) where the attribute was declared.</p>
+
+<p>As we’re allowing our attribute to be declared on classes and methods, we’re expecting that argument to be an instance
+of either <code class="language-plaintext highlighter-rouge">ReflectionClass</code> or <code class="language-plaintext highlighter-rouge">ReflectionMethod</code>, so we can use an union of these two types when type-hinting the 
+argument.</p>
+
+<p>For the cases where the attribute is declared on a specific method, we’ll fetch the method name from the 
+<code class="language-plaintext highlighter-rouge">ReflectionMethod</code> object, and we’ll use it instead of the hardcoded value we had until now. For the cases where the 
+attribute is declared on the class, we’ll fail-back to the <code class="language-plaintext highlighter-rouge">handle</code> method as before. If you want to make it more 
+flexible for these cases too, you can add another property to the attribute, which you’ll set when declaring the 
+attribute on the classes.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">registerAttributeForAutoconfiguration</span><span class="p">(</span>
+    <span class="nc">Listener</span><span class="o">::</span><span class="n">class</span><span class="p">,</span>
+    <span class="k">static</span> <span class="k">function</span> <span class="p">(</span>
+        <span class="kt">ChildDefinition</span> <span class="nv">$definition</span><span class="p">,</span>
+        <span class="kt">Listener</span> <span class="nv">$attribute</span><span class="p">,</span>
+        <span class="kt">ReflectionClass</span> <span class="o">|</span> <span class="nc">ReflectionMethod</span> <span class="nv">$reflector</span>
+    <span class="p">):</span> <span class="kt">void</span> <span class="p">{</span>
+        <span class="nv">$method</span> <span class="o">=</span> <span class="p">(</span><span class="nv">$reflector</span> <span class="k">instanceof</span> <span class="nc">ReflectionMethod</span><span class="p">)</span>
+            <span class="o">?</span> <span class="nv">$reflector</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">()</span>
+            <span class="o">:</span> <span class="s1">'handle'</span><span class="p">;</span>
+
+        <span class="nv">$definition</span><span class="o">-&gt;</span><span class="nf">addTag</span><span class="p">(</span><span class="s1">'messenger.message_handler'</span><span class="p">,</span> <span class="p">[</span>
+            <span class="s1">'bus'</span> <span class="o">=&gt;</span> <span class="s1">'event_bus'</span><span class="p">,</span>
+            <span class="s1">'method'</span> <span class="o">=&gt;</span> <span class="nv">$method</span><span class="p">,</span>
+            <span class="s1">'handles'</span> <span class="o">=&gt;</span> <span class="nv">$attribute</span><span class="o">-&gt;</span><span class="n">event</span>
+        <span class="p">]);</span>
+    <span class="p">}</span>
+<span class="p">);</span></code></pre></figure>
+
+<p>If we check the list now, we’ll see both the classes and methods handling the events:</p>
+
+<figure class="highlight"><pre><code class="language-text" data-lang="text">MemberJoinedEvent
+    handled by CountMembers (when method=increaseNumber)
+    handled by SendWelcomeEmail (when method=handle)
+    handled by StartTrialPeriod (when method=handle)
+
+MemberLeftEvent
+    handled by CountMembers (when method=decreaseNumber)</code></pre></figure>
+
+<h3 id="passing-additional-configuration">Passing additional configuration</h3>
+
+<p>As we saw before, we own the attribute class, so we can use them to pass any metadata or configuration options we want.</p>
+
+<p>Now, let’s say that we have two transports - <code class="language-plaintext highlighter-rouge">sync</code> for the actions we want to do synchronously, and <code class="language-plaintext highlighter-rouge">async</code> for the 
+actions we want to be done asynchronously in the background.</p>
+
+<figure class="highlight"><pre><code class="language-yaml" data-lang="yaml"><span class="na">framework</span><span class="pi">:</span>
+    <span class="na">messenger</span><span class="pi">:</span>
+        <span class="c1"># ...</span>
+
+        <span class="na">transports</span><span class="pi">:</span>
+             <span class="na">async</span><span class="pi">:</span> <span class="s1">'</span><span class="s">%env(MESSENGER_TRANSPORT_DSN)%'</span>
+             <span class="na">sync</span><span class="pi">:</span> <span class="s1">'</span><span class="s">sync://'</span></code></pre></figure>
+
+<p>From the handlers, we’d like the <code class="language-plaintext highlighter-rouge">SendWelcomeEmail</code> one to be working only in the background, so it’ll handle only 
+events that will come through the <code class="language-plaintext highlighter-rouge">async</code> transport.</p>
+
+<p>Instead of specifying the transport inside the listener classes, thus adding more framework code to them, we can add a 
+new boolean property in the attribute which will indicate whether we want the concrete handler to be executed 
+synchronously or asynchronously.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]</span>
+<span class="kd">class</span> <span class="nc">Listener</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="kt">string</span> <span class="nv">$event</span><span class="p">,</span>
+        <span class="k">public</span> <span class="k">readonly</span> <span class="kt">bool</span> <span class="nv">$async</span> <span class="o">=</span> <span class="kc">false</span>
+    <span class="p">)</span> <span class="p">{</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>And we’ll update the attribute declaration in the listener:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[Listener(event: MemberJoinedEvent::class, async: true)]</span>
+<span class="k">final</span> <span class="kd">class</span> <span class="nc">SendWelcomeEmail</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">handle</span><span class="p">(</span><span class="kt">MemberJoinedEvent</span> <span class="nv">$event</span><span class="p">):</span> <span class="kt">void</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>In the configurator for the attribute, we can use the <code class="language-plaintext highlighter-rouge">from_transport</code> property of the tag to register the handlers 
+properly:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">registerAttributeForAutoconfiguration</span><span class="p">(</span>
+    <span class="nc">Listener</span><span class="o">::</span><span class="n">class</span><span class="p">,</span>
+    <span class="k">static</span> <span class="k">function</span> <span class="p">(</span>
+        <span class="kt">ChildDefinition</span> <span class="nv">$definition</span><span class="p">,</span>
+        <span class="kt">Listener</span> <span class="nv">$attribute</span><span class="p">,</span>
+        <span class="kt">ReflectionClass</span> <span class="o">|</span> <span class="nc">ReflectionMethod</span> <span class="nv">$reflector</span>
+    <span class="p">):</span> <span class="kt">void</span> <span class="p">{</span>
+        <span class="nv">$method</span> <span class="o">=</span> <span class="p">(</span><span class="nv">$reflector</span> <span class="k">instanceof</span> <span class="nc">ReflectionMethod</span><span class="p">)</span>
+            <span class="o">?</span> <span class="nv">$reflector</span><span class="o">-&gt;</span><span class="nf">getName</span><span class="p">()</span>
+            <span class="o">:</span> <span class="s1">'handle'</span><span class="p">;</span>
+
+        <span class="nv">$definition</span><span class="o">-&gt;</span><span class="nf">addTag</span><span class="p">(</span><span class="s1">'messenger.message_handler'</span><span class="p">,</span> <span class="p">[</span>
+            <span class="s1">'bus'</span> <span class="o">=&gt;</span> <span class="s1">'event_bus'</span><span class="p">,</span>
+            <span class="s1">'method'</span> <span class="o">=&gt;</span> <span class="nv">$method</span><span class="p">,</span>
+            <span class="s1">'handles'</span> <span class="o">=&gt;</span> <span class="nv">$attribute</span><span class="o">-&gt;</span><span class="n">event</span><span class="p">,</span>
+            <span class="s1">'from_transport'</span> <span class="o">=&gt;</span> <span class="nv">$attribute</span><span class="o">-&gt;</span><span class="n">async</span> <span class="o">?</span> <span class="s1">'async'</span> <span class="o">:</span> <span class="s1">'sync'</span>
+        <span class="p">]);</span>
+    <span class="p">}</span>
+<span class="p">);</span></code></pre></figure>
+
+<p>If we check the list now, we’ll see that the welcome e-mail messages will be sent asynchronously, while the rest of the 
+listeners will be executed synchronously:</p>
+
+<figure class="highlight"><pre><code class="language-text" data-lang="text">MemberJoinedEvent
+    handled by CountMembers (when method=increaseNumber, from_transport=sync)
+    handled by SendWelcomeEmail (when method=handle, from_transport=async)
+    handled by StartTrialPeriod (when method=handle, from_transport=sync)
+
+MemberLeftEvent
+    handled by CountMembers (when method=decreaseNumber, from_transport=sync)</code></pre></figure>
+
+<p><em><small>(Note that in this case the same message is being expected from multiple transports, so it’ll have to be
+routed to all of them.)</small></em></p>
+
+<h3 id="next-steps">Next steps</h3>
+
+<p>If we have other busses for another types of messages in our application, we can create more attribute classes - one
+for each of them. For example, if we have a command bus too, we can create a <code class="language-plaintext highlighter-rouge">#[CommandHandler]</code> attribute. That way, 
+we’ll provide more context, we can specify different configuration options per handler type, and we’ll better 
+distinguish the different types of message handlers.</p>
+
+<p><br />
+<small><small><small>
+    Photo for social media by <a href="https://www.pexels.com/photo/parcels-inside-a-delivery-van-6170458/" target="_blank">Tima Miroshnichenko</a>.
+</small></small></small></p>
+
+  </article>
+
+</div>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <p class="text"><small>
+        Unless otherwise stated, the content of this blog is licensed under a <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+        </small></p>
+
+      <p class="text" style="float: left;">
+        <small>Built with <a href="http://jekyllrb.com" target="_blank">Jekyll</a></small>
+      </p>
+
+      <p class="text" style="text-align: right;">
+        <small>Subscribe via <a href="/feed.xml">RSS</a></small>
+      </p>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

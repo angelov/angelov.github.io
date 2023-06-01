@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width initial-scale=1">
+
+  <title>Centralized exception handling with Symfony and custom PHP attributes</title>
+  <meta name="description" content="Over time, as our application grows, the controllers can become cluttered with repeated exception handling code. In this article we’ll see how we can have bo...">
+
+	
+  		<meta content="article" property="og:type">
+	
+	<meta property="og:title" content="Centralized exception handling with Symfony and custom PHP attributes" />
+	<meta property="og:description" content="Over time, as our application grows, the controllers can become cluttered with repeated exception handling code. In this article we’ll see how we can have bo..." />
+	
+  		<meta content="http://angelovdejan.me/2022/11/24/centralized-exception-handling-with-symfony-and-custom-php-attributes.html" property="og:url">
+	
+	<meta property="og:site_name" content="Dejan Angelov" />
+	<meta property="og:image" content="http://angelovdejan.me/images/error-cover.jpg" />
+	<meta name="twitter:site" content="@angelovdejan" />
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://angelovdejan.me/2022/11/24/centralized-exception-handling-with-symfony-and-custom-php-attributes.html">
+  <link rel="alternate" type="application/atom+xml" title="Dejan Angelov" href="http://angelovdejan.me/feed.xml" />
+  <link rel="me" href="https://phpc.social/@angelov">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Dejan Angelov</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+          <a class="page-link" href="/">Blog</a>
+        
+          
+          <a class="page-link" href="/about/">About Me</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">Centralized exception handling with Symfony and custom PHP attributes</h1>
+    <p class="post-meta">Nov 24, 2022 • Dejan Angelov</p>
+  </header>
+
+  <article class="post-content">
+    <p>Over time, as our application grows, the controllers can become cluttered with repeated exception handling code. In this 
+article we’ll see how we can have both cleaner controller methods when using the Symfony framework by centralizing the 
+exception handling, and cleaner domain exceptions by only declaring custom PHP attributes on their classes.</p>
+
+<p>Let’s imagine that we are developing an e-commerce application that can process and manage orders made by the website’s 
+visitors. One of the functionalities is the ability to cancel a specific order. However, an order can be cancelled 
+only if these three conditions are satisfied:</p>
+
+<ul>
+  <li>it must be present (obviously)</li>
+  <li>it must not be shipped yet</li>
+  <li>only the customer who created it can cancel it</li>
+</ul>
+
+<p>If there is an attempt to cancel an order without satisfying all the conditions, we are throwing one of the following 
+exceptions:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">OrderNotFound</span> <span class="kd">extends</span> <span class="nc">Exception</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">OrderId</span> <span class="nv">$id</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">parent</span><span class="o">::</span><span class="nf">__construct</span><span class="p">(</span>
+            <span class="nb">sprintf</span><span class="p">(</span><span class="s1">'The order "%s" could not be found.'</span><span class="p">,</span> <span class="p">(</span><span class="n">string</span><span class="p">)</span> <span class="nv">$id</span><span class="p">)</span>
+        <span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">OrderAlreadyShipped</span> <span class="kd">extends</span> <span class="nc">Exception</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">Order</span> <span class="nv">$order</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">parent</span><span class="o">::</span><span class="nf">__construct</span><span class="p">(</span>
+            <span class="nb">sprintf</span><span class="p">(</span><span class="s1">'The order "%s" is already shipped.'</span><span class="p">,</span> <span class="p">(</span><span class="n">string</span><span class="p">)</span> <span class="nv">$order</span><span class="o">-&gt;</span><span class="nf">getId</span><span class="p">())</span>
+        <span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">CustomerMismatch</span> <span class="kd">extends</span> <span class="nc">Exception</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">Order</span> <span class="nv">$order</span><span class="p">,</span> <span class="kt">Customer</span> <span class="nv">$customer</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">parent</span><span class="o">::</span><span class="nf">__construct</span><span class="p">(</span><span class="nb">sprintf</span><span class="p">(</span>
+            <span class="s1">'The order "%s" is not created by the customer "%s".'</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">string</span><span class="p">)</span> <span class="nv">$order</span><span class="o">-&gt;</span><span class="nf">getId</span><span class="p">(),</span>
+            <span class="p">(</span><span class="n">string</span><span class="p">)</span> <span class="nv">$customer</span><span class="o">-&gt;</span><span class="nf">getId</span><span class="p">()</span>
+        <span class="p">));</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<h3 id="cancelling-the-order-and-handling-the-exceptions">Cancelling the order and handling the exceptions</h3>
+
+<p>One way to handle the possibly thrown exceptions is to catch them in the controller where we initiate the cancellation
+(either directly or through some other service, like a command handler). Then we can build the response, assign the 
+suitable status code to it, and return it to the client.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">OrdersController</span>
+<span class="p">{</span>
+    <span class="c1">// ...</span>
+
+    <span class="na">#[Route("/orders/{id}/cancel", ...)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">cancel</span><span class="p">(</span><span class="kt">string</span> <span class="nv">$id</span><span class="p">):</span> <span class="kt">Response</span>
+    <span class="p">{</span>
+        <span class="c1">// ...</span>
+
+        <span class="k">try</span> <span class="p">{</span>
+            <span class="nv">$order</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">orders</span><span class="o">-&gt;</span><span class="nf">find</span><span class="p">(</span><span class="nv">$id</span><span class="p">);</span>
+            <span class="nv">$order</span><span class="o">-&gt;</span><span class="nf">cancel</span><span class="p">(</span><span class="n">by</span><span class="o">:</span> <span class="nv">$customer</span><span class="p">);</span>
+
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">orders</span><span class="o">-&gt;</span><span class="nf">store</span><span class="p">(</span><span class="nv">$order</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nc">OrderNotFound</span> <span class="nv">$e</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nc">JsonResponse</span><span class="p">([</span><span class="s2">"error"</span> <span class="o">=&gt;</span> <span class="nv">$e</span><span class="o">-&gt;</span><span class="nf">getMessage</span><span class="p">()],</span> <span class="nc">Response</span><span class="o">::</span><span class="no">HTTP_NOT_FOUND</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nc">CustomerMismatch</span> <span class="nv">$e</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nc">JsonResponse</span><span class="p">([</span><span class="s2">"error"</span> <span class="o">=&gt;</span> <span class="nv">$e</span><span class="o">-&gt;</span><span class="nf">getMessage</span><span class="p">()],</span> <span class="nc">Response</span><span class="o">::</span><span class="no">HTTP_FORBIDDEN</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nc">OrderAlreadyShipped</span> <span class="nv">$e</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nc">JsonResponse</span><span class="p">([</span><span class="s2">"error"</span> <span class="o">=&gt;</span> <span class="nv">$e</span><span class="o">-&gt;</span><span class="nf">getMessage</span><span class="p">()],</span> <span class="nc">Response</span><span class="o">::</span><span class="no">HTTP_UNPROCESSABLE_ENTITY</span><span class="p">);</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="k">new</span> <span class="nc">JsonResponse</span><span class="p">(</span><span class="mf">...</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>As we can see, most of the code in our method is used for handling the exceptions. This will likely happen with most
+of the other controller methods in our application as well. Another negative implication is that whenever we start 
+throwing a new similar exception somewhere in our domain layer, we’ll also have to add another catch block in all 
+controllers it may end up to. That can span over multiple API endpoints, thus we’ll need to update multiple controller 
+methods (for example, we may also throw an <code class="language-plaintext highlighter-rouge">OrderAlreadyShipped</code> exception if somebody tries to add a new item to an 
+already shipped order.)</p>
+
+<h3 id="moving-the-exception-handling">Moving the exception handling</h3>
+
+<p>As a first step, let’s remove the entire try-catch block from the controller method:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">OrdersController</span> <span class="kd">extends</span> <span class="nc">AbstractController</span>
+<span class="p">{</span>
+    <span class="c1">// ...</span>
+
+    <span class="na">#[Route("/orders/{id}/cancel", ...)]</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">cancel</span><span class="p">(</span><span class="kt">string</span> <span class="nv">$id</span><span class="p">):</span> <span class="kt">Response</span>
+    <span class="p">{</span>
+        <span class="c1">// ...</span>
+
+        <span class="nv">$order</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">orders</span><span class="o">-&gt;</span><span class="nf">find</span><span class="p">(</span><span class="nv">$id</span><span class="p">);</span>
+        <span class="nv">$order</span><span class="o">-&gt;</span><span class="nf">cancel</span><span class="p">(</span><span class="n">by</span><span class="o">:</span> <span class="nv">$customer</span><span class="p">);</span>
+
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">orders</span><span class="o">-&gt;</span><span class="nf">store</span><span class="p">(</span><span class="nv">$order</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="k">new</span> <span class="nc">JsonResponse</span><span class="p">(</span><span class="mf">...</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>The controller method is more clear now, and we can easily see it’s intention. Note that as a trade-off, we’re losing 
+some visibility over what can go wrong during the execution of the methods we’re calling.</p>
+
+<p>If we try to cancel an already shipped order now, as expected since we removed the exception handling, we’ll get the 
+Symfony’s default error page.</p>
+
+<blockquote>
+  <p>The order “213ba2c0-d82c-4805-8de4-773d20f3cbe3” is already shipped.<br />
+<sup>HTTP 500 Internal Server Error - OrderAlreadyShipped</sup></p>
+</blockquote>
+
+<p>When an exception is thrown during the handling of the request, and is not explicitly caught and handled, the Symfony’s 
+HttpKernel dispatches an 
+<a href="https://symfony.com/doc/6.1/reference/events.html#kernel-exception" target="_blank"><code class="language-plaintext highlighter-rouge">kernel.exception</code></a> event.</p>
+
+<p>To centralize the exception handling, we can create a listener that will listen to this type of events, and that will 
+take care of preparing the response for the client. When such event is dispatched, all listeners that are supposed to
+handle it receive an instance of the <code class="language-plaintext highlighter-rouge">ExceptionEvent</code> class, from which we can get the thrown exception object.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Symfony\Component\EventDispatcher\EventSubscriberInterface</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Symfony\Component\HttpKernel\Event\ExceptionEvent</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Symfony\Component\HttpKernel\KernelEvents</span><span class="p">;</span>
+
+<span class="kd">class</span> <span class="nc">ExceptionHandler</span> <span class="kd">implements</span> <span class="nc">EventSubscriberInterface</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">static</span> <span class="k">function</span> <span class="n">getSubscribedEvents</span><span class="p">():</span> <span class="kt">array</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="p">[</span><span class="nc">KernelEvents</span><span class="o">::</span><span class="no">EXCEPTION</span> <span class="o">=&gt;</span> <span class="s1">'handleException'</span><span class="p">];</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">handleException</span><span class="p">(</span><span class="kt">ExceptionEvent</span> <span class="nv">$event</span><span class="p">):</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="nv">$exception</span> <span class="o">=</span> <span class="nv">$event</span><span class="o">-&gt;</span><span class="nf">getThrowable</span><span class="p">();</span>
+
+        <span class="c1">// ...</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Now, whenever there’s an unhandled exception in our application, we will receive an event in the listener we just 
+created. However, we don’t want all the exceptions handled here, as not everything is intended to be shown to the 
+client, so we need a way to determine if the received exception should be handled or not.</p>
+
+<p>The domain exceptions we have in our application so far can be divided in 3 groups, each associated with an appropriate
+HTTP status code.</p>
+
+<table class="table table-bordered table-condensed table-striped" style="font-size: small; width: 45%">
+    <thead>
+        <tr>
+            <th>Exception</th>
+            <th>Status Code</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>OrderNotFound</td>
+            <td>404 Not Found</td>
+        </tr>
+        <tr>
+            <td>CustomerMismatch</td>
+            <td>403 Forbidden</td>
+        </tr>
+        <tr>
+            <td>OrderAlreadyShipped</td>
+            <td>422 Unprocessable Entity</td>
+        </tr>
+    </tbody>
+</table>
+
+<p>For each of the HTTP status codes that we want to support we’ll create a separate custom PHP attribute. To make sure all
+of them are providing a specific status code, the attributes will implement the following interface:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">interface</span> <span class="nc">StatusCodeProvider</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getStatusCode</span><span class="p">():</span> <span class="kt">int</span><span class="p">;</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Here are the three attributes we need so far:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Symfony\Component\HttpFoundation\Response</span><span class="p">;</span>
+
+<span class="na">#[Attribute(Attribute::TARGET_CLASS)]</span>
+<span class="kd">class</span> <span class="nc">NotFound</span> <span class="kd">implements</span> <span class="nc">StatusCodeProvider</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getStatusCode</span><span class="p">():</span> <span class="kt">int</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nc">Response</span><span class="o">::</span><span class="no">HTTP_NOT_FOUND</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Symfony\Component\HttpFoundation\Response</span><span class="p">;</span>
+
+<span class="na">#[Attribute(Attribute::TARGET_CLASS)]</span>
+<span class="kd">class</span> <span class="nc">UnprocessableEntity</span> <span class="kd">implements</span> <span class="nc">StatusCodeProvider</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getStatusCode</span><span class="p">():</span> <span class="kt">int</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nc">Response</span><span class="o">::</span><span class="no">HTTP_UNPROCESSABLE_ENTITY</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Symfony\Component\HttpFoundation\Response</span><span class="p">;</span>
+
+<span class="na">#[Attribute(Attribute::TARGET_CLASS)]</span>
+<span class="kd">class</span> <span class="nc">AccessDenied</span> <span class="kd">implements</span> <span class="nc">StatusCodeProvider</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getStatusCode</span><span class="p">():</span> <span class="kt">int</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nc">Response</span><span class="o">::</span><span class="no">HTTP_FORBIDDEN</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Next, we’ll declare the new attributes on the existing exception classes:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[NotFound]</span>
+<span class="kd">class</span> <span class="nc">OrderNotFound</span> <span class="kd">extends</span> <span class="nc">Exception</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[UnprocessableEntity]</span>
+<span class="kd">class</span> <span class="nc">OrderAlreadyShipped</span> <span class="kd">extends</span> <span class="nc">Exception</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[AccessDenied]</span>
+<span class="kd">class</span> <span class="nc">CustomerMismatch</span> <span class="kd">extends</span> <span class="nc">Exception</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span></code></pre></figure>
+
+<p>Back to the listener, we can now use the Reflection API to get the attributes declared on the thrown exception’s class. 
+As any class can have multiple attributes declared on it, we can use the fact that all our attributes implement the 
+<code class="language-plaintext highlighter-rouge">StatusCodeProvider</code> interface and filter out the non-related ones. If no such attribute is declared on the class, it 
+means that we don’t support handling this exception in the handler. If multiple such attributes are declared, we’ll just 
+use the first one.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Symfony\Component\EventDispatcher\EventSubscriberInterface</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Symfony\Component\HttpKernel\Event\ExceptionEvent</span><span class="p">;</span>
+
+<span class="kd">class</span> <span class="nc">ExceptionHandler</span> <span class="kd">implements</span> <span class="nc">EventSubscriberInterface</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">static</span> <span class="k">function</span> <span class="n">getSubscribedEvents</span><span class="p">():</span> <span class="kt">array</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">handleException</span><span class="p">(</span><span class="kt">ExceptionEvent</span> <span class="nv">$event</span><span class="p">):</span> <span class="kt">void</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">function</span> <span class="n">getAttribute</span><span class="p">(</span><span class="kt">Throwable</span> <span class="nv">$exception</span><span class="p">):</span> <span class="kt">?StatusCodeProvider</span>
+    <span class="p">{</span>
+        <span class="nv">$reflectionClass</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ReflectionClass</span><span class="p">(</span><span class="nv">$exception</span><span class="p">);</span>
+        <span class="nv">$attributes</span> <span class="o">=</span> <span class="nv">$reflectionClass</span><span class="o">-&gt;</span><span class="nf">getAttributes</span><span class="p">();</span>
+
+        <span class="nv">$instances</span> <span class="o">=</span> <span class="nb">array_map</span><span class="p">(</span>
+            <span class="k">fn</span><span class="p">(</span><span class="kt">ReflectionAttribute</span> <span class="nv">$attribute</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="nv">$attribute</span><span class="o">-&gt;</span><span class="nf">newInstance</span><span class="p">(),</span>
+            <span class="nv">$attributes</span>
+        <span class="p">);</span>
+
+        <span class="nv">$supported</span> <span class="o">=</span> <span class="nb">array_filter</span><span class="p">(</span>
+            <span class="nv">$instances</span><span class="p">,</span>
+            <span class="k">fn</span><span class="p">(</span><span class="kt">object</span> <span class="nv">$attribute</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="nv">$attribute</span> <span class="k">instanceof</span> <span class="nc">StatusCodeProvider</span>
+        <span class="p">);</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="nb">count</span><span class="p">(</span><span class="nv">$supported</span><span class="p">)</span> <span class="o">===</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="kc">null</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="nv">$supported</span><span class="p">[</span><span class="nb">array_key_first</span><span class="p">(</span><span class="nv">$supported</span><span class="p">)];</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">function</span> <span class="n">supportedException</span><span class="p">(</span><span class="kt">Throwable</span> <span class="nv">$exception</span><span class="p">):</span> <span class="kt">bool</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">getAttribute</span><span class="p">(</span><span class="nv">$exception</span><span class="p">)</span> <span class="o">!==</span> <span class="kc">null</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>If the exception is not supported, we can simply ignore it and let it be handled somewhere else. Otherwise, we need to
+extract the needed data and build the response we’d want to return to the client.</p>
+
+<p>For the response’s content we can use the message provided by the exception, and we can get the needed HTTP status code 
+from the declared attribute that we fetched above.</p>
+
+<p>When the response is prepared, we need to pass it along by updating the received event object using the <code class="language-plaintext highlighter-rouge">setResponse</code>
+method.</p>
+
+<div class="alert alert-warning">
+    <small>
+	    <strong>Note:</strong> By default we can only set 3xx (Redirection), 4xx (Client error) and 5xx (Server error) 
+        HTTP status codes on the response we're building in the listener.
+        If we set a status code that is outside these ranges, the HttpKernel will override it and will use 500 instead.
+        <br />
+        This behaviour can be changed by calling 
+        <code class="language-plaintext highlighter-rouge">allowCustomResponseCode()</code> on the event object, but 
+        doing that is discouraged by the 
+        <a href="https://symfony.com/doc/6.1/reference/events.html#kernel-exception" target="_blank">docs</a>.
+    </small>
+</div>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Symfony\Component\HttpFoundation\JsonResponse</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Symfony\Component\EventDispatcher\EventSubscriberInterface</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Symfony\Component\HttpKernel\Event\ExceptionEvent</span><span class="p">;</span>
+
+<span class="kd">class</span> <span class="nc">ExceptionHandler</span> <span class="kd">implements</span> <span class="nc">EventSubscriberInterface</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">static</span> <span class="k">function</span> <span class="n">getSubscribedEvents</span><span class="p">():</span> <span class="kt">array</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">handleException</span><span class="p">(</span><span class="kt">ExceptionEvent</span> <span class="nv">$event</span><span class="p">):</span> <span class="kt">void</span>
+    <span class="p">{</span>
+        <span class="nv">$exception</span> <span class="o">=</span> <span class="nv">$event</span><span class="o">-&gt;</span><span class="nf">getThrowable</span><span class="p">();</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">supportedException</span><span class="p">(</span><span class="nv">$exception</span><span class="p">))</span> <span class="p">{</span>
+            <span class="k">return</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="nv">$attribute</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="nf">getAttribute</span><span class="p">(</span><span class="nv">$exception</span><span class="p">);</span>
+
+        <span class="nv">$response</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">JsonResponse</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="s2">"error"</span> <span class="o">=&gt;</span> <span class="nv">$exception</span><span class="o">-&gt;</span><span class="nf">getMessage</span><span class="p">()</span>
+            <span class="p">],</span>
+            <span class="nv">$attribute</span><span class="o">-&gt;</span><span class="nf">getStatusCode</span><span class="p">()</span>
+        <span class="p">);</span>
+
+        <span class="nv">$event</span><span class="o">-&gt;</span><span class="nf">setResponse</span><span class="p">(</span><span class="nv">$response</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">function</span> <span class="n">getAttribute</span><span class="p">(</span><span class="kt">Throwable</span> <span class="nv">$exception</span><span class="p">):</span> <span class="kt">?StatusCodeProvider</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">function</span> <span class="n">supportedException</span><span class="p">(</span><span class="kt">Throwable</span> <span class="nv">$exception</span><span class="p">):</span> <span class="kt">bool</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<div class="alert alert-info">
+    <small>
+	    <strong>Note:</strong> For simplicity, the data for the response's content in the examples is passed directly as 
+        an array. An external serializer service can be injected and used to structure the data instead.
+    </small>
+</div>
+
+<p>If we try to cancel the same order again, this time we’ll get the expected JSON data, with <em>422 Unprocessable Entity</em> as
+status code.</p>
+
+<figure class="highlight"><pre><code class="language-json" data-lang="json"><span class="p">{</span><span class="w">
+    </span><span class="nl">"error"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The order </span><span class="se">\"</span><span class="s2">213ba2c0-d82c-4805-8de4-773d20f3cbe3</span><span class="se">\"</span><span class="s2"> is already shipped."</span><span class="w">
+</span><span class="p">}</span></code></pre></figure>
+
+<h3 id="next-steps">Next steps</h3>
+
+<p>Now that we have the attributes for adding the needed metadata, and the handler which will handle the marked exceptions, 
+we can easily add more use cases.</p>
+
+<p>For example, if we have a functionality for applying promo codes to the orders, and we check if the given code is still 
+valid, we can have the following exception, and just declare the <code class="language-plaintext highlighter-rouge">UnprocessableEntity</code> attribute on it:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="na">#[UnprocessableEntity]</span>
+<span class="kd">class</span> <span class="nc">PromoCodeExpired</span> <span class="kd">extends</span> <span class="nc">Exception</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">PromoCode</span> <span class="nv">$promoCode</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">parent</span><span class="o">::</span><span class="nf">__construct</span><span class="p">(</span><span class="nb">sprintf</span><span class="p">(</span>
+            <span class="s1">'The promo code "%s" has expired.'</span><span class="p">,</span>
+            <span class="nv">$promoCode</span><span class="o">-&gt;</span><span class="nf">getCode</span><span class="p">()</span>
+        <span class="p">));</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>If we want to support more status codes, we only need to create a new attribute that will implement the 
+<code class="language-plaintext highlighter-rouge">StatusCodeProvider</code> interface and start declaring it on the exceptions.</p>
+
+<p>Sometimes, it may happen that we may want to return a different message to the client instead of the one we have in 
+the exception (which we may still want to keep for other purposes). For such cases, we can extend the attributes by 
+adding an optional <code class="language-plaintext highlighter-rouge">message</code> argument to each of them that can be specified when declaring it on an exception. Then in
+the handler we can use this message if provided, or the exception’s one if not.</p>
+
+<p>The events of the <code class="language-plaintext highlighter-rouge">ExceptionEvent</code> class also contain the request object, which can be useful to decide in which format 
+we should respond to the client. If we also have controllers that render templates and provide HTML content, we can 
+create an additional error handler that will set a flash message and redirect the client to the previous page, if the 
+exception is thrown while executing a request from those pages. This can be also useful if we have multiple bounded 
+contexts, so we can have multiple similar handlers that will cover exceptions from different areas in the application.</p>
+
+<p><br />
+<small><small><small>
+    Photo for social media by 
+    <a href="https://www.pexels.com/photo/word-error-on-white-surface-4439425/" target="_blank">Vie Studio</a>.
+</small></small></small></p>
+
+  </article>
+
+</div>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <p class="text"><small>
+        Unless otherwise stated, the content of this blog is licensed under a <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+        </small></p>
+
+      <p class="text" style="float: left;">
+        <small>Built with <a href="http://jekyllrb.com" target="_blank">Jekyll</a></small>
+      </p>
+
+      <p class="text" style="text-align: right;">
+        <small>Subscribe via <a href="/feed.xml">RSS</a></small>
+      </p>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

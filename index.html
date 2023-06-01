@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width initial-scale=1">
+
+  <title>Dejan Angelov</title>
+  <meta name="description" content="Software engineer. BSc. in Computer Science. Passionate about building and delivering high quality software solutions using proven methodologies/practices (domain-driven design, test-driven development, behaviour-driven development, continuous integration/delivery, etc) and technologies (PHP, Symfony, RDBs, Redis, Neo4j, etc.)
+">
+
+	
+  		<meta content="website" property="og:type">
+	
+	<meta property="og:title" content="Dejan Angelov" />
+	<meta property="og:description" content="Software engineer. BSc. in Computer Science. Passionate about building and delivering high quality software solutions using proven methodologies/practices (domain-driven design, test-driven development, behaviour-driven development, continuous integration/delivery, etc) and technologies (PHP, Symfony, RDBs, Redis, Neo4j, etc.)
+" />
+	
+  		<meta content="http://angelovdejan.me/" property="og:url">
+	
+	<meta property="og:site_name" content="Dejan Angelov" />
+	<meta property="og:image" content="http://angelovdejan.me/images/100_4188-cropped.jpg" />
+	<meta name="twitter:site" content="@angelovdejan" />
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://angelovdejan.me/">
+  <link rel="alternate" type="application/atom+xml" title="Dejan Angelov" href="http://angelovdejan.me/feed.xml" />
+  <link rel="me" href="https://phpc.social/@angelov">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Dejan Angelov</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+          <a class="page-link" href="/">Blog</a>
+        
+          
+          <a class="page-link" href="/about/">About Me</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="home">
+
+  <h1 class="page-heading">Posts</h1>
+
+  <ul class="post-list">
+    
+      
+
+      <li>
+        <span class="post-meta">Jun 1, 2023</span>
+
+        <h2>
+          <a class="post-link" href="/2023/06/01/resolving-values-for-unmapped-properties-when-mapping-request-data-to-dtos-in-symfony-6-3.html">Resolving values for unmapped properties when mapping request data to DTOs in Symfony 6.3+</a>
+        </h2>
+        <p>
+          <p>Ever since it was <a href="https://symfony.com/blog/new-in-symfony-6-3-mapping-request-data-to-typed-objects" target="_blank">introduced</a>,
+the functionality for mapping request data to DTOs has been my favourite Symfony 6.3 new feature. The new 
+<code class="language-plaintext highlighter-rouge">#[MapRequestPayload]</code> and <code class="language-plaintext highlighter-rouge">#[MapQueryString]</code> attributes allow us to delegate the DTO instantiation to the framework, 
+instead of doing it manually in the controllers - for example when instantiating commands to be dispatched to a command 
+bus. However, I realized that most of the commands in my application contain additional properties which are not 
+directly mapped to the request data - such as the ID of the currently authenticated user. In this article, we’ll see how
+we can enhance the process to be able to resolve the unmapped values in such cases.</p>
+
+        </p>
+        <p>
+          <a href="/2023/06/01/resolving-values-for-unmapped-properties-when-mapping-request-data-to-dtos-in-symfony-6-3.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">Nov 24, 2022</span>
+
+        <h2>
+          <a class="post-link" href="/2022/11/24/centralized-exception-handling-with-symfony-and-custom-php-attributes.html">Centralized exception handling with Symfony and custom PHP attributes</a>
+        </h2>
+        <p>
+          <p>Over time, as our application grows, the controllers can become cluttered with repeated exception handling code. In this 
+article we’ll see how we can have both cleaner controller methods when using the Symfony framework by centralizing the 
+exception handling, and cleaner domain exceptions by only declaring custom PHP attributes on their classes.</p>
+
+        </p>
+        <p>
+          <a href="/2022/11/24/centralized-exception-handling-with-symfony-and-custom-php-attributes.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">May 10, 2022</span>
+
+        <h2>
+          <a class="post-link" href="/2022/05/10/experimental-unpacking-message-properties-as-method-arguments.html">Experimental: Unpacking message properties as handler arguments in Symfony Messenger</a>
+        </h2>
+        <p>
+          <p>In my <a href="/2022/01/09/custom-php-attributes-for-symfony-messenger-handlers.html">previous post</a>, we saw that by using 
+custom PHP attributes, we can have our Symfony Messenger message handlers placed in any service in our application. The 
+only requirement for the message handlers is for them to be methods that are able to receive the message object as an 
+argument. In this post we will see how we can avoid that requirement, and register any method as a message handler, by 
+automatically passing any of the message’s properties as values for the handler’s arguments.</p>
+
+        </p>
+        <p>
+          <a href="/2022/05/10/experimental-unpacking-message-properties-as-method-arguments.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">Jan 9, 2022</span>
+
+        <h2>
+          <a class="post-link" href="/2022/01/09/custom-php-attributes-for-symfony-messenger-handlers.html">Using custom PHP attributes for registering and configuring Symfony Messenger handlers</a>
+        </h2>
+        <p>
+          <p>Symfony Messenger provides multiple ways for registration and configuration of message handlers. Nowadays, the handlers 
+are usually registered by implementing the component’s <code class="language-plaintext highlighter-rouge">MessageHandlerInterface</code> interface, which makes the handlers 
+auto-configurable by default, or by implementing some interface of ours which we can register for autoconfiguration 
+manually. However, with the addition of the attributes functionality in PHP 8.0, it doesn’t really make sense anymore to 
+use interfaces for the purpose of “describing” our classes. In this article we’ll explore how we can use our own PHP 
+attributes to register and configure the message handlers.</p>
+
+        </p>
+        <p>
+          <a href="/2022/01/09/custom-php-attributes-for-symfony-messenger-handlers.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">May 17, 2020</span>
+
+        <h2>
+          <a class="post-link" href="/2020/05/17/php-8-attributes-example.html">PHP 8 Attributes example: Injecting the current user in Symfony controllers without the security component</a>
+        </h2>
+        <p>
+          <p>Although we’ve been using annotations in PHP for years, this functionality was not part of the language itself. Instead, 
+we had to rely on parsing the comments formatted as docblocks above the classes, properties or methods, usually with the 
+<code class="language-plaintext highlighter-rouge">doctrine/annotations</code> library. With the acceptance of the <a href="https://wiki.php.net/rfc/attributes_v2">“Attributes v2” RFC</a> 
+for the next major PHP version, the concept will become part of the PHP core, called “Attributes” and with slightly 
+different syntax: <code class="language-plaintext highlighter-rouge">&lt;&lt;Example&gt;&gt;</code> instead of <code class="language-plaintext highlighter-rouge">@Example</code>. In this article we’ll see how we can use a custom attribute to 
+tell Symfony how to resolve the currently authenticated user as controller action argument even if we don’t use the 
+security component.</p>
+
+        </p>
+        <p>
+          <a href="/2020/05/17/php-8-attributes-example.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">Aug 2, 2018</span>
+
+        <h2>
+          <a class="post-link" href="/2018/08/02/decomposing-the-user-checking-mechanism-in-symfony.html">Decomposing the user checking mechanism in Symfony</a>
+        </h2>
+        <p>
+          <p>The user checkers in the Symfony Security component allow us to control whether an user can be authenticated in our system, 
+even if they have entered their correct credentials. In this article we’ll see how we can make the process more flexible by 
+splitting our checking logic from one to multiple checkers.</p>
+
+        </p>
+        <p>
+          <a href="/2018/08/02/decomposing-the-user-checking-mechanism-in-symfony.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">Sep 17, 2017</span>
+
+        <h2>
+          <a class="post-link" href="/2017/09/17/using-the-go-aspect-oriented-framework-to-trim-values-before-validation.html">Using the Go! Aspect-Oriented Framework to trim values before validation</a>
+        </h2>
+        <p>
+          <p>Few weeks ago, while using the <code class="language-plaintext highlighter-rouge">NotBlank</code> constraint from the Symfony Validator to validate a <a href="/2017/08/21/on-creating-cleaner-and-simpler-commands.html">command</a> before executing it, a co-worker of mine noticed that the values are not automatically trimmed, so it would allow strings of empty spaces to be passed as valid values.</p>
+
+        </p>
+        <p>
+          <a href="/2017/09/17/using-the-go-aspect-oriented-framework-to-trim-values-before-validation.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">Aug 21, 2017</span>
+
+        <h2>
+          <a class="post-link" href="/2017/08/21/on-creating-cleaner-and-simpler-commands.html">On creating cleaner and simpler commands</a>
+        </h2>
+        <p>
+          <p>Commands, as part of the CQRS pattern, provide a clean way for representing intentions for changing some state in our application. We’ve been working with CQRS for some time and it helped us significantly improve the quality of our code base. Meanwhile, we learned a lot, but we also made some mistakes. In this article we’ll discuss some of the mistakes we were making when using commands and what we did to improve them.</p>
+
+        </p>
+        <p>
+          <a href="/2017/08/21/on-creating-cleaner-and-simpler-commands.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">Jun 1, 2016</span>
+
+        <h2>
+          <a class="post-link" href="/2016/06/01/symfony3-form-component-and-type-hinting-in-php-7.html">Symfony3 Form Component and type hinting in PHP 7.0</a>
+        </h2>
+        <p>
+          <p>Type hinting the methods’ arguments and declaring their return types is one of the best improvements that came with PHP 7. When I finally got a chance to play with it in an experimental side project using Symfony, I got stuck trying to combine the type hinting and the Symfony3 Form component.</p>
+
+        </p>
+        <p>
+          <a href="/2016/06/01/symfony3-form-component-and-type-hinting-in-php-7.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">Nov 22, 2014</span>
+
+        <h2>
+          <a class="post-link" href="/2014/11/22/experimental-upgrading-to-laravel-5-how-i-did-it.html">Experimental upgrading to Laravel 5: How I did it</a>
+        </h2>
+        <p>
+          <p>When I started working on my biggest side project, the “EESTEC Platform for Local Committees” I introduced <a href="/2014/08/05/introducing-eestec-platform-for-local-committees.html">a few months ago</a>, the latest stable version of Laravel was 4.2. Over the past weeks, Taylor introduced many great changes and new features that we’ll be able to use in the new version, firstly numbered 4.3 and later 5. According to the framework’s six month release cycle, it should had hit stable late this month or in early December. Because of that, I started to play with it and to apply the changes to make my application use it.</p>
+
+        </p>
+        <p>
+          <a href="/2014/11/22/experimental-upgrading-to-laravel-5-how-i-did-it.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">Aug 5, 2014</span>
+
+        <h2>
+          <a class="post-link" href="/2014/08/05/introducing-eestec-platform-for-local-committees.html">Introducing EESTEC Platform for Local Committees</a>
+        </h2>
+        <p>
+          <p>“EESTEC Platform” is a web application which will aim to ease the internal management of EESTEC’s local committees. The main idea for this to be achieved is to automate many of the tasks currently done “by hand” and to collect the big number of information (such as list of members and their info) currently spread across many spreadsheets, papers, mails etc. in one place.</p>
+
+        </p>
+        <p>
+          <a href="/2014/08/05/introducing-eestec-platform-for-local-committees.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">Jan 3, 2014</span>
+
+        <h2>
+          <a class="post-link" href="/2014/01/03/analiza-na-mk-domenite-do-dekemvri-2013.html">Анализа на .mk домените до декември 2013</a>
+        </h2>
+        <p>
+          <p>Пред околу 3 месеци, од 01.10.2013 год. конечно на сила стапи новиот правилник за организација и управување со врвниот македонски .mk домен (претходниот правилник <a href="http://it.com.mk/sakate-mk-domen-kje-mora-da-pochekate-nekoj-mesec/">бил креиран во 1995 год.</a>). Со овие домени, покрај Македонската академска истражувачка мрежа (МАРнет), од сега ќе можат да управуваат и компаниите кои ќе добијат статус на регистрари.</p>
+
+        </p>
+        <p>
+          <a href="/2014/01/03/analiza-na-mk-domenite-do-dekemvri-2013.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">Jul 30, 2013</span>
+
+        <h2>
+          <a class="post-link" href="/2013/07/30/imw-10-years-of-eestec-lc-skopje.html">IMW: 10 years of EESTEC LC Skopje</a>
+        </h2>
+        <p>
+          <p>In the last few months my activities with EESTEC drastically decreased. I wanted to see the people again so I decided to join them in Ohrid on the first International Motivation Weekend organized by EESTEC LC Skopje from 18 to 21st of July. The event was also part of the bigger event called “EESTECers gone wild 2″. This IMW is important for the LC because it was mainly organized in order to celebrate the LC’s 10th birthday.</p>
+
+        </p>
+        <p>
+          <a href="/2013/07/30/imw-10-years-of-eestec-lc-skopje.html">Read more...</a>
+        </p>
+      </li>
+    
+      
+
+      <li>
+        <span class="post-meta">Oct 7, 2012</span>
+
+        <h2>
+          <a class="post-link" href="/2012/10/07/eestec-motivational-weekend-october-2012.html">EESTEC Motivational Weekend October 2012</a>
+        </h2>
+        <p>
+          <p>When I joned <a href="http://eestec-sk.org.mk/">EESTEC (LC Skopje)</a> about half year ago, almost all of the existing members were talking to me about some event called “Motivational weekend”. Few weeks after that, in May, we went on the first EESTEC motivational weekend for 2012 in Mountain house “Vrteska” on the mountain Plackovica. Today, I just got back from my second motivational weekend, held in the Mountain house “Smreka” on Popova Sapka from 05 to 07 October.</p>
+
+        </p>
+        <p>
+          <a href="/2012/10/07/eestec-motivational-weekend-october-2012.html">Read more...</a>
+        </p>
+      </li>
+    
+  </ul>
+
+</div>
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <p class="text"><small>
+        Unless otherwise stated, the content of this blog is licensed under a <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+        </small></p>
+
+      <p class="text" style="float: left;">
+        <small>Built with <a href="http://jekyllrb.com" target="_blank">Jekyll</a></small>
+      </p>
+
+      <p class="text" style="text-align: right;">
+        <small>Subscribe via <a href="/feed.xml">RSS</a></small>
+      </p>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

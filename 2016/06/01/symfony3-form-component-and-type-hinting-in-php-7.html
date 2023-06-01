@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width initial-scale=1">
+
+  <title>Symfony3 Form Component and type hinting in PHP 7.0</title>
+  <meta name="description" content="Type hinting the methods’ arguments and declaring their return types is one of the best improvements that came with PHP 7. When I finally got a chance to pla...">
+
+	
+  		<meta content="article" property="og:type">
+	
+	<meta property="og:title" content="Symfony3 Form Component and type hinting in PHP 7.0" />
+	<meta property="og:description" content="Type hinting the methods’ arguments and declaring their return types is one of the best improvements that came with PHP 7. When I finally got a chance to pla..." />
+	
+  		<meta content="http://angelovdejan.me/2016/06/01/symfony3-form-component-and-type-hinting-in-php-7.html" property="og:url">
+	
+	<meta property="og:site_name" content="Dejan Angelov" />
+	<meta property="og:image" content="http://angelovdejan.me/images/100_4188-cropped.jpg" />
+	<meta name="twitter:site" content="@angelovdejan" />
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://angelovdejan.me/2016/06/01/symfony3-form-component-and-type-hinting-in-php-7.html">
+  <link rel="alternate" type="application/atom+xml" title="Dejan Angelov" href="http://angelovdejan.me/feed.xml" />
+  <link rel="me" href="https://phpc.social/@angelov">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Dejan Angelov</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+          <a class="page-link" href="/">Blog</a>
+        
+          
+          <a class="page-link" href="/about/">About Me</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">Symfony3 Form Component and type hinting in PHP 7.0</h1>
+    <p class="post-meta">Jun 1, 2016 • Dejan Angelov</p>
+  </header>
+
+  <article class="post-content">
+    <p>Type hinting the methods’ arguments and declaring their return types is one of the best improvements that came with PHP 7. When I finally got a chance to play with it in an experimental side project using Symfony, I got stuck trying to combine the type hinting and the Symfony3 Form component.</p>
+
+<p>This post is an explaination of what happened in my case and what I did to make it work. It may not be the best solution and I still haven’t tried to use this with a form that includes some more complex types (eg. EntityType).</p>
+
+<p>Lets begin with a list of the two problems that occured:</p>
+
+<ol>
+  <li>Trying to access a property with a null value, using a setter declared to return strings.</li>
+  <li>Trying to pass a null value to a setter expecting a string.</li>
+</ol>
+
+<p>For a better elaboration of the problems, let’s imagine that we have a system for articles that only contain titles. Here’s the simple entity class:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">namespace</span> <span class="nn">AppBundle\Entity</span><span class="p">;</span>
+
+<span class="kn">use</span> <span class="nc">Symfony\Component\Validator\Constraints</span> <span class="k">as</span> <span class="nc">Assert</span><span class="p">;</span>
+
+<span class="kd">class</span> <span class="nc">Article</span>
+<span class="p">{</span>
+    <span class="cd">/**
+     * @Assert\NotBlank(message="Each article must have a title.")
+     */</span>
+    <span class="k">private</span> <span class="nv">$title</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">getTitle</span><span class="p">()</span> <span class="p">:</span> <span class="kt">string</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">title</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">setTitle</span><span class="p">(</span><span class="kt">string</span> <span class="nv">$title</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">title</span> <span class="o">=</span> <span class="nv">$title</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>And the custom form field type for the created entity:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">namespace</span> <span class="nn">AppBundle\Form\Type</span><span class="p">;</span>
+
+<span class="kn">use</span> <span class="nc">AppBundle\Entity\Article</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Symfony\Component\Form\AbstractType</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Symfony\Component\Form\Extension\Core\Type\TextType</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Symfony\Component\Form\FormBuilderInterface</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Symfony\Component\OptionsResolver\OptionsResolver</span><span class="p">;</span>
+
+<span class="kd">class</span> <span class="nc">ArticleType</span> <span class="kd">extends</span> <span class="nc">AbstractType</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">buildForm</span><span class="p">(</span><span class="kt">FormBuilderInterface</span> <span class="nv">$builder</span><span class="p">,</span> <span class="kt">array</span> <span class="nv">$options</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$builder</span><span class="o">-&gt;</span><span class="nf">add</span><span class="p">(</span><span class="s1">'title'</span><span class="p">,</span> <span class="nc">TextType</span><span class="o">::</span><span class="n">class</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">configureOptions</span><span class="p">(</span><span class="kt">OptionsResolver</span> <span class="nv">$resolver</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$resolver</span><span class="o">-&gt;</span><span class="nf">setDefault</span><span class="p">(</span><span class="s1">'data_class'</span><span class="p">,</span> <span class="nc">Article</span><span class="o">::</span><span class="n">class</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>The first said problem occurs when we want to create the form and we provide the form factory an object of the entity class to read the default data from. 
+The service then tries to read the properties of the object using its getter methods. If any of the properties has a null value, instead of a value whose type corresponds to the return type of the getter, and we don’t have any logic in the getter (we just return the property’s value as it is, like in the example above), we’d get an exception similar to the following one:</p>
+
+<blockquote>
+  <p>Type error: Return value of AppBundle\Entity\Article::getTitle() must be of the type string, null returned<br />
+<sup>500 Internal Server Error - FatalThrowableError</sup></p>
+</blockquote>
+
+<p>To fix the problem in our example, we should set the default value of the <code class="language-plaintext highlighter-rouge">$title</code> property to be an empty string:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">Article</span>
+<span class="p">{</span>
+    <span class="mf">...</span>
+    <span class="k">private</span> <span class="nv">$title</span> <span class="o">=</span> <span class="s2">""</span><span class="p">;</span>
+    <span class="mf">...</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>With what we’ve done by now, we fixed the first problem and we’re getting the form rendered in our browser.</p>
+
+<p>However, if we try to submit the form while leaving the “title” field empty, instead of having the validation component arguing about the field being blank (as we specified in the entity class), we’ll get the following exception:</p>
+
+<blockquote>
+  <p>Expected argument of type “string”, “NULL” given<br />
+<sup>500 Internal Server Error - InvalidArgumentException</sup></p>
+</blockquote>
+
+<p>This is the second said problem, happening when the service tries to fill the object with the data submitted from the form. It will try to use the <code class="language-plaintext highlighter-rouge">setTitle(string $title)</code> method to set the value from the “title” field. Since we didn’t fill anything in the field, it will try to pass null as a value to the setter that expects a string, so the system will throw the exception.</p>
+
+<p>So, to solve the problem, we should have something to convert the value from null to an empty string before it’s passed to the setter in the object.</p>
+
+<p>When I looked for a solution around the web, the Stack Overflow user <a href="http://stackoverflow.com/users/3000068/hpierce">HPierce</a> suggested that I can use a data transformer to fix the submitted data.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">namespace</span> <span class="nn">AppBundle\Form\DataTransformer</span><span class="p">;</span>
+
+<span class="kn">use</span> <span class="nc">Symfony\Component\Form\DataTransformerInterface</span><span class="p">;</span>
+
+<span class="kd">class</span> <span class="nc">NullToEmptyStringDataTransformer</span> <span class="kd">implements</span> <span class="nc">DataTransformerInterface</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">transform</span><span class="p">(</span><span class="nv">$value</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nv">$value</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">reverseTransform</span><span class="p">(</span><span class="nv">$value</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="p">(</span><span class="nb">is_null</span><span class="p">(</span><span class="nv">$value</span><span class="p">))</span> <span class="o">?</span> <span class="p">(</span><span class="n">string</span><span class="p">)</span> <span class="nv">$value</span> <span class="o">:</span> <span class="nv">$value</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>As a final step, we should add the data transformer to the field in the method where we’re building the form (in the ArticleType class):</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="k">public</span> <span class="k">function</span> <span class="n">buildForm</span><span class="p">(</span><span class="kt">FormBuilderInterface</span> <span class="nv">$builder</span><span class="p">,</span> <span class="kt">array</span> <span class="nv">$options</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="mf">...</span>
+
+    <span class="nv">$transformer</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">NullToEmptyStringDataTransformer</span><span class="p">();</span>
+    <span class="nv">$builder</span><span class="o">-&gt;</span><span class="nf">get</span><span class="p">(</span><span class="s1">'title'</span><span class="p">)</span><span class="o">-&gt;</span><span class="nf">addModelTransformer</span><span class="p">(</span><span class="nv">$transformer</span><span class="p">);</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>If we now try to submit the form without any value in the “title” field, the data will be processed and we should get the specified validation error message.</p>
+
+<p>If you have a comment or a better solution, please ping me on <a href="https://twitter.com/angelovdejan">Twitter</a>.</p>
+
+
+  </article>
+
+</div>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <p class="text"><small>
+        Unless otherwise stated, the content of this blog is licensed under a <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+        </small></p>
+
+      <p class="text" style="float: left;">
+        <small>Built with <a href="http://jekyllrb.com" target="_blank">Jekyll</a></small>
+      </p>
+
+      <p class="text" style="text-align: right;">
+        <small>Subscribe via <a href="/feed.xml">RSS</a></small>
+      </p>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width initial-scale=1">
+
+  <title>Using the Go! Aspect-Oriented Framework to trim values before validation</title>
+  <meta name="description" content="Few weeks ago, while using the NotBlank constraint from the Symfony Validator to validate a command before executing it, a co-worker of mine noticed that the...">
+
+	
+  		<meta content="article" property="og:type">
+	
+	<meta property="og:title" content="Using the Go! Aspect-Oriented Framework to trim values before validation" />
+	<meta property="og:description" content="Few weeks ago, while using the NotBlank constraint from the Symfony Validator to validate a command before executing it, a co-worker of mine noticed that the..." />
+	
+  		<meta content="http://angelovdejan.me/2017/09/17/using-the-go-aspect-oriented-framework-to-trim-values-before-validation.html" property="og:url">
+	
+	<meta property="og:site_name" content="Dejan Angelov" />
+	<meta property="og:image" content="http://angelovdejan.me/images/aop.png" />
+	<meta name="twitter:site" content="@angelovdejan" />
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://angelovdejan.me/2017/09/17/using-the-go-aspect-oriented-framework-to-trim-values-before-validation.html">
+  <link rel="alternate" type="application/atom+xml" title="Dejan Angelov" href="http://angelovdejan.me/feed.xml" />
+  <link rel="me" href="https://phpc.social/@angelov">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Dejan Angelov</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+          <a class="page-link" href="/">Blog</a>
+        
+          
+          <a class="page-link" href="/about/">About Me</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">Using the Go! Aspect-Oriented Framework to trim values before validation</h1>
+    <p class="post-meta">Sep 17, 2017 • Dejan Angelov</p>
+  </header>
+
+  <article class="post-content">
+    <p>Few weeks ago, while using the <code class="language-plaintext highlighter-rouge">NotBlank</code> constraint from the Symfony Validator to validate a <a href="/2017/08/21/on-creating-cleaner-and-simpler-commands.html">command</a> before executing it, a co-worker of mine noticed that the values are not automatically trimmed, so it would allow strings of empty spaces to be passed as valid values.</p>
+
+<p>We were already using the Symfony Forms component with the command classes set for the <code class="language-plaintext highlighter-rouge">data_class</code> property in the forms, and the trimming was <a href="http://symfony.com/doc/current/reference/forms/types/text.html#trim">done there by default</a>. As the commands can be initialized from another places in the applications as well, this is not enough and we must be sure that the data is still properly validated.</p>
+
+<p>While looking for multiple approaches how this can be solved, it came to my mind that this is a case where we can finally give <a href="https://en.wikipedia.org/wiki/Aspect-oriented_programming">Aspect-Oriented Programming</a> a try.</p>
+
+<p>My first contact with the AOP paradigm was few years ago while exploring the Spring framework in Java. My impression was that the AOP way of connecting things is too messy and can easily lead us to having a big mess in our applications, so I didn’t dig much deeper into the approach.</p>
+
+<p>However, after listening to Alexander Lisachenko’s <a href="https://www.youtube.com/watch?v=CIXfYbnom6s">“Solving Cross-Cutting Concerns in PHP”</a> talk at the PHP Serbia Conference this spring, although still suspicous about relying too much on the concept, I was kind of convinced that AOP can be useful for some simpler tasks in our applications.</p>
+
+<p>The <a href="https://github.com/goaop/framework">Go! Aspect-Oriented Framework</a> is a popular AOP framework in the PHP ecosystem (and probably the only one I had heard of before), so I chose it for the experiment.</p>
+
+<p>Let’s imagine that we want to validate the values passed in a <code class="language-plaintext highlighter-rouge">PostCommentCommand</code> command before executing it.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Symfony\Component\Validator\Constraints</span> <span class="k">as</span> <span class="nc">Assert</span><span class="p">;</span>
+
+<span class="kd">class</span> <span class="nc">PostCommentCommand</span>
+<span class="p">{</span>
+    <span class="cd">/** @Assert\NotBlank() */</span>
+    <span class="k">private</span> <span class="nv">$author</span><span class="p">;</span>
+
+    <span class="cd">/** @Assert\NotBlank() */</span>
+    <span class="k">private</span> <span class="nv">$content</span><span class="p">;</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">string</span> <span class="nv">$author</span><span class="p">,</span> <span class="kt">string</span> <span class="nv">$content</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">author</span> <span class="o">=</span> <span class="nv">$author</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">content</span> <span class="o">=</span> <span class="nv">$content</span><span class="p">;</span>
+        <span class="c1">// other stuff if needed...</span>
+    <span class="p">}</span>
+
+    <span class="c1">// getters...</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>If we create an instance of the command and pass strings of empty spaces as values for the <code class="language-plaintext highlighter-rouge">$author</code> and <code class="language-plaintext highlighter-rouge">$content</code> arguments, we can see that no constraints are violated.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Symfony\Component\Validator\Validation</span><span class="p">;</span>
+
+<span class="nv">$validator</span> <span class="o">=</span> <span class="nc">Validation</span><span class="o">::</span><span class="nf">createValidatorBuilder</span><span class="p">()</span>
+    <span class="o">-&gt;</span><span class="nf">enableAnnotationMapping</span><span class="p">()</span>
+    <span class="o">-&gt;</span><span class="nf">getValidator</span><span class="p">();</span>
+
+<span class="nv">$command</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">PostCommentCommand</span><span class="p">(</span><span class="s1">'  '</span><span class="p">,</span> <span class="s1">'  '</span><span class="p">);</span>
+
+<span class="nv">$violations</span> <span class="o">=</span> <span class="nv">$validator</span><span class="o">-&gt;</span><span class="nf">validate</span><span class="p">(</span><span class="nv">$command</span><span class="p">);</span>
+
+<span class="nf">dump</span><span class="p">(</span><span class="nv">$violations</span><span class="p">);</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nc">ConstraintViolationList</span> <span class="p">{</span><span class="c1">#20 ▼</span>
+  <span class="o">-</span><span class="n">violations</span><span class="o">:</span> <span class="p">[]</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>When using the Go! AOP framework, in order to trim the values of the constructor arguments before validating them, we need to create an Aspect class where the actual trimming would take place.</p>
+
+<blockquote>
+  <p><strong>Aspect</strong>: A modularization of a concern that cuts across multiple objects. Logging, caching, transaction management are good examples of a crosscutting concern in PHP applications. Go! defines aspects as regular classes implemented empty Aspect interface and annotated with the @Aspect annotation.</p>
+</blockquote>
+
+<p>In the aspect class, we’ll have an method that we’d like to be called whenever we call a method whose string arguments need to be trimmed. When called, this method will receive an instance of the <code class="language-plaintext highlighter-rouge">MethodInvocation</code> class that will contain details about the originally called method, including a list of the values given as arguments in the call. We can then take the string arguments from the list and trim their values.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Go\Aop\Aspect</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Go\Aop\Intercept\MethodInvocation</span><span class="p">;</span>
+
+<span class="kd">class</span> <span class="nc">TrimStringValuesAspect</span> <span class="kd">implements</span> <span class="nc">Aspect</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">trimStringArgumentValues</span><span class="p">(</span><span class="kt">MethodInvocation</span> <span class="nv">$invocation</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$invocation</span><span class="o">-&gt;</span><span class="nf">setArguments</span><span class="p">(</span><span class="nb">array_map</span><span class="p">(</span><span class="k">function</span><span class="p">(</span><span class="nv">$argument</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="nb">is_string</span><span class="p">(</span><span class="nv">$argument</span><span class="p">)</span> <span class="o">?</span> <span class="nb">trim</span><span class="p">(</span><span class="nv">$argument</span><span class="p">)</span> <span class="o">:</span> <span class="nv">$argument</span><span class="p">;</span>
+        <span class="p">},</span> <span class="nv">$invocation</span><span class="o">-&gt;</span><span class="nf">getArguments</span><span class="p">()));</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>The Go! framework needs to know when it should call the method we just created. To tell it, we should define the method as an <code class="language-plaintext highlighter-rouge">Advice</code> and give it a properly defined way to match join points.</p>
+
+<blockquote>
+  <p><strong>Advice</strong>: Action taken by an aspect at a particular join point. There are different types of advice: @Around, @Before and @After advice.</p>
+</blockquote>
+
+<p>In our concrete example, we need to call the aspect before the constructor of the command class is called, so we’ll use the <code class="language-plaintext highlighter-rouge">@Before</code> advice annotation.</p>
+
+<blockquote>
+  <p><strong>Before advice</strong>: Advice that executes before a join point, but which does not have the ability to prevent execution flow proceeding to the join point (unless it throws an exception).</p>
+</blockquote>
+
+<p>The join points matchers are defined using a concept called Pointcuts.</p>
+
+<blockquote>
+  <p><strong>Pointcut</strong>: A regular expression that matches join points. Advice is associated with a pointcut expression and runs at any join point matched by the pointcut (for example, the execution of a method with a certain name).</p>
+</blockquote>
+
+<p>The first way for defining a pointcut we’ll take a look at is to use a regular expression to define a pattern that will be used to check if the given advice should be called when a method in another place is being executed.</p>
+
+<p>We would like the <code class="language-plaintext highlighter-rouge">trimStringArgumentValues()</code> method of our <code class="language-plaintext highlighter-rouge">TrimStringValuesAspect</code> class to be called before an instance of our command classes (all classes whose name ends with the word Command) is created, so we’ll have the following advice definition:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="cd">/**
+ * @Before("execution(public **\*Command-&gt;__construct(*))")
+ */</span>
+<span class="k">public</span> <span class="k">function</span> <span class="n">trimStringArgumentValues</span><span class="p">(</span><span class="kt">MethodInvocation</span> <span class="nv">$invocation</span><span class="p">){</span> <span class="mf">...</span> <span class="p">}</span></code></pre></figure>
+
+<p>Another thing we need to do is to register the aspect in the framework. We’ll see how we can do that bellow in this article.</p>
+
+<p>Having the aspect defined, if we validate the created command object again, we get the two expected violations:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nc">ConstraintViolationList</span> <span class="p">{</span><span class="c1">#284 ▼</span>
+  <span class="o">-</span><span class="n">violations</span><span class="o">:</span> <span class="k">array</span><span class="o">:</span><span class="mi">2</span> <span class="p">[</span><span class="err">▼</span>
+    <span class="mi">0</span> <span class="o">=&gt;</span> <span class="nc">ConstraintViolation</span> <span class="p">{</span><span class="c1">#305 ▼</span>
+      <span class="o">-</span><span class="n">message</span><span class="o">:</span> <span class="s2">"This value should not be blank."</span>
+      <span class="o">-</span><span class="n">root</span><span class="o">:</span> <span class="nc">PostCommentCommand</span> <span class="p">{</span><span class="c1">#279 ▶}</span>
+      <span class="o">-</span><span class="n">propertyPath</span><span class="o">:</span> <span class="s2">"author"</span>
+      <span class="o">-</span><span class="n">invalidValue</span><span class="o">:</span> <span class="s2">""</span>
+      <span class="o">-</span><span class="n">constraint</span><span class="o">:</span> <span class="nc">NotBlank</span> <span class="p">{</span><span class="c1">#291 ▶}</span>
+      <span class="c1">// ...</span>
+    <span class="p">}</span>
+    <span class="mi">1</span> <span class="o">=&gt;</span> <span class="nc">ConstraintViolation</span> <span class="p">{</span><span class="c1">#306 ▼</span>
+      <span class="o">-</span><span class="n">message</span><span class="o">:</span> <span class="s2">"This value should not be blank."</span>
+      <span class="o">-</span><span class="n">root</span><span class="o">:</span> <span class="nc">PostCommentCommand</span> <span class="p">{</span><span class="c1">#279 ▶}</span>
+      <span class="o">-</span><span class="n">propertyPath</span><span class="o">:</span> <span class="s2">"content"</span>
+      <span class="o">-</span><span class="n">invalidValue</span><span class="o">:</span> <span class="s2">""</span>
+      <span class="o">-</span><span class="n">constraint</span><span class="o">:</span> <span class="nc">NotBlank</span> <span class="p">{</span><span class="c1">#300 ▶}</span>
+      <span class="c1">// ...</span>
+    <span class="p">}</span>
+  <span class="p">]</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Another way for defining when the advice should be called is to use an annotation pointcut. Defining it this way, it will allow the <code class="language-plaintext highlighter-rouge">trimStringArgumentValues()</code> method to be called before execution of any method in any class annotated with a custom annotation we’d create.</p>
+
+<p>We’ll create a new annotation class called, for example, <code class="language-plaintext highlighter-rouge">TrimmableArgumentValues</code>:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Doctrine\Common\Annotations\Annotation</span><span class="p">;</span>
+
+<span class="cd">/**
+ * @Annotation
+ * @Target("METHOD")
+ */</span>
+<span class="kd">class</span> <span class="nc">TrimmableArgumentValues</span> <span class="kd">extends</span> <span class="nc">Annotation</span>
+<span class="p">{</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>We’d now change the definition of the advice in our aspect to match only the methods annotated with our annotation:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="cd">/**
+ * @Before("@execution(Acme\TrimmableArgumentValues)")
+ */</span>
+<span class="k">public</span> <span class="k">function</span> <span class="n">trimStringArgumentValues</span><span class="p">(</span><span class="kt">MethodInvocation</span> <span class="nv">$invocation</span><span class="p">)</span> <span class="p">{</span> <span class="mf">...</span> <span class="p">}</span></code></pre></figure>
+
+<p>The constructor method of our command class will not be automatically associated with the aspect anymore, so we’ll annotate it with the <code class="language-plaintext highlighter-rouge">TrimmableArgumentValues</code> annotation:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kd">class</span> <span class="nc">PostCommentCommand</span>
+<span class="p">{</span>
+    <span class="c1">// ...</span>
+
+    <span class="cd">/**
+     * @TrimmableArgumentValues
+     */</span>
+    <span class="k">public</span> <span class="k">function</span> <span class="n">__construct</span><span class="p">(</span><span class="kt">string</span> <span class="nv">$author</span><span class="p">,</span> <span class="kt">string</span> <span class="nv">$content</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">author</span> <span class="o">=</span> <span class="nv">$author</span><span class="p">;</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="n">content</span> <span class="o">=</span> <span class="nv">$content</span><span class="p">;</span>
+        <span class="c1">// other stuff if needed...</span>
+    <span class="p">}</span>
+
+    <span class="c1">// ...</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>If we validate the command object again, we’ll still get the same expected violations.</p>
+
+<p>Integrating the Go! AOP framework into our applications is well described in the framework’s documentation.</p>
+
+<p>We should create a new kernel class that would extends the <code class="language-plaintext highlighter-rouge">Go\Core\AspectKernel</code> class. In this kernel we’ll register our aspects.</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="kn">use</span> <span class="nc">Go\Core\AspectContainer</span><span class="p">;</span>
+<span class="kn">use</span> <span class="nc">Go\Core\AspectKernel</span><span class="p">;</span>
+
+<span class="kd">class</span> <span class="nc">ApplicationAspectKernel</span> <span class="kd">extends</span> <span class="nc">AspectKernel</span>
+<span class="p">{</span>
+    <span class="k">protected</span> <span class="k">function</span> <span class="n">configureAop</span><span class="p">(</span><span class="kt">AspectContainer</span> <span class="nv">$container</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="nv">$container</span><span class="o">-&gt;</span><span class="nf">registerAspect</span><span class="p">(</span><span class="k">new</span> <span class="nc">TrimStringValuesAspect</span><span class="p">());</span>
+    <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Then, in our front controller (or some other proper place in the application) we’ll initialize and configure the kernel:</p>
+
+<figure class="highlight"><pre><code class="language-php" data-lang="php"><span class="nv">$applicationAspectKernel</span> <span class="o">=</span> <span class="nc">ApplicationAspectKernel</span><span class="o">::</span><span class="nf">getInstance</span><span class="p">();</span>
+<span class="nv">$applicationAspectKernel</span><span class="o">-&gt;</span><span class="nf">init</span><span class="p">([</span>
+    <span class="s1">'debug'</span> <span class="o">=&gt;</span> <span class="kc">true</span><span class="p">,</span>
+    <span class="s1">'cacheDir'</span>  <span class="o">=&gt;</span> <span class="k">__DIR__</span> <span class="mf">.</span> <span class="s1">'/cache'</span><span class="p">,</span>
+    <span class="s1">'includePaths'</span> <span class="o">=&gt;</span> <span class="p">[</span>
+        <span class="k">__DIR__</span> <span class="mf">.</span> <span class="s1">'/src/'</span>
+    <span class="p">]</span>
+<span class="p">]);</span></code></pre></figure>
+
+<p>If we want to use it withing the Symfony Framework, we can use the official <a href="https://github.com/goaop/goaop-symfony-bundle">GoAopBundle</a> bundle.</p>
+
+<p>Having this bundle installed, we only need to register our aspects as a services and tag them with a <code class="language-plaintext highlighter-rouge">goaop.aspect</code> tag:</p>
+
+<figure class="highlight"><pre><code class="language-yaml" data-lang="yaml"><span class="na">services</span><span class="pi">:</span>
+    <span class="na">Acme\TrimStringValuesAspect</span><span class="pi">:</span>
+        <span class="na">tags</span><span class="pi">:</span>
+            <span class="pi">-</span> <span class="pi">{</span> <span class="nv">name</span><span class="pi">:</span> <span class="nv">goaop.aspect</span> <span class="pi">}</span></code></pre></figure>
+
+<p>As I said before, this is a first time I’m giving the AOP approach a try, so I can’t guarantee if this way of dealing with the argument values is actually good on a long term basis.</p>
+
+<p>If you want to share any opinions, ping me on <a href="https://twitter.com/angelovdejan">Twitter</a>.</p>
+
+  </article>
+
+</div>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <div class="footer-col-wrapper">
+      <p class="text"><small>
+        Unless otherwise stated, the content of this blog is licensed under a <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+        </small></p>
+
+      <p class="text" style="float: left;">
+        <small>Built with <a href="http://jekyllrb.com" target="_blank">Jekyll</a></small>
+      </p>
+
+      <p class="text" style="text-align: right;">
+        <small>Subscribe via <a href="/feed.xml">RSS</a></small>
+      </p>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
